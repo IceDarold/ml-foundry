@@ -30,7 +30,7 @@ model:
 # Validation Settings - Настройки кросс-валидации
 validation:
   name: "StratifiedKFold"
-  n_splits: 5
+  n_splits: 2
 
 # Output Settings - Настройки для сохранения результатов
 output_dir: "outputs/experiments"
