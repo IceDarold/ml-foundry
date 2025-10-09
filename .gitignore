@@ -1,7 +1,7 @@
 # Data and Models
-data/
-outputs/
-models/
+data/*
+outputs/*
+models/*
 
 # But allow .gitkeep files to track empty directories
 !.gitkeep
