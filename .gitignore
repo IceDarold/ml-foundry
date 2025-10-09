@@ -3,6 +3,9 @@ data/
 outputs/
 models/
 
+# But allow .gitkeep files to track empty directories
+!.gitkeep
+
 # Python cache
 __pycache__/
 *.pyc
