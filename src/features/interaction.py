@@ -1,5 +1,6 @@
 # src/features/interaction.py
 
+import logging
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Any, Tuple
@@ -33,14 +34,20 @@ class NumericalInteractionGenerator(FeatureGenerator):
 
     def fit(self, data: pd.DataFrame) -> None:
         """Это stateless преобразование, обучение не требуется."""
-        print(f"[{self.name}] NumericalInteractionGenerator не требует обучения.")
+        for col in self.cols:
+            if col not in data.columns:
+                raise ValueError(f"Column '{col}' not found in data")
+        logging.info(f"[{self.name}] NumericalInteractionGenerator не требует обучения.")
         pass
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """Создает новые признаки-взаимодействия."""
-        df = data.copy()
-        print(f"[{self.name}] Создание числовых взаимодействий для колонок: {self.cols}")
-        
+        for col in self.cols:
+            if col not in data.columns:
+                raise ValueError(f"Column '{col}' not found in data")
+        df = data
+        logging.info(f"[{self.name}] Создание числовых взаимодействий для колонок: {self.cols}")
+
         # Генерируем все уникальные пары колонок
         for c1, c2 in combinations(self.cols, 2):
             if 'add' in self.operations:
@@ -51,9 +58,13 @@ class NumericalInteractionGenerator(FeatureGenerator):
             if 'multiply' in self.operations:
                 df[f"{c1}_mul_{c2}"] = df[c1] * df[c2]
             if 'divide' in self.operations:
-                df[f"{c1}_div_{c2}"] = df[c1] / (df[c2] + self.epsilon)
-                df[f"{c2}_div_{c1}"] = df[c2] / (df[c1] + self.epsilon) # Деление несимметрично
-        
+                try:
+                    df[f"{c1}_div_{c2}"] = df[c1] / (df[c2] + self.epsilon)
+                    df[f"{c2}_div_{c1}"] = df[c2] / (df[c1] + self.epsilon) # Деление несимметрично
+                except Exception as e:
+                    logging.error(f"Error in division operations for {c1} and {c2}: {e}")
+                    raise
+
         return df
 
 # ==================================================================================
@@ -78,20 +89,32 @@ class CategoricalInteractionGenerator(FeatureGenerator):
 
     def fit(self, data: pd.DataFrame) -> None:
         """Это stateless преобразование, обучение не требуется."""
-        print(f"[{self.name}] CategoricalInteractionGenerator не требует обучения.")
+        for group in self.cols_groups:
+            for col in group:
+                if col not in data.columns:
+                    raise ValueError(f"Column '{col}' not found in data")
+        logging.info(f"[{self.name}] CategoricalInteractionGenerator не требует обучения.")
         pass
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """Создает новые конкатенированные категориальные признаки."""
-        df = data.copy()
-        print(f"[{self.name}] Создание категориальных взаимодействий.")
-        
+        for group in self.cols_groups:
+            for col in group:
+                if col not in data.columns:
+                    raise ValueError(f"Column '{col}' not found in data")
+        df = data
+        logging.info(f"[{self.name}] Создание категориальных взаимодействий.")
+
         for group in self.cols_groups:
             new_col_name = "_".join(group)
             # Убедимся, что все колонки строкового типа перед конкатенацией
-            df[new_col_name] = df[group].astype(str).agg('_'.join, axis=1)
-            print(f"  - Создана колонка: {new_col_name}")
-            
+            try:
+                df[new_col_name] = df[group].astype(str).agg('_'.join, axis=1)
+                logging.info(f"  - Создана колонка: {new_col_name}")
+            except Exception as e:
+                logging.error(f"Error creating column {new_col_name}: {e}")
+                raise
+
         return df
         
 # ==================================================================================
@@ -116,38 +139,69 @@ class NumCatInteractionGenerator(FeatureGenerator):
         super().__init__(name)
         self.interactions = interactions
         self.group_means_: Dict[str, pd.Series] = {}
+        self.overall_means_: Dict[str, float] = {}
+        self.epsilon = 1e-6
 
     def fit(self, data: pd.DataFrame) -> None:
         """
         Вычисляет и сохраняет средние значения для каждой категории
         ТОЛЬКО на обучающих данных.
         """
-        print(f"[{self.name}] Обучение NumCatInteractionGenerator.")
+        for cat_col, num_cols in self.interactions.items():
+            if cat_col not in data.columns:
+                raise ValueError(f"Column '{cat_col}' not found in data")
+            for num_col in num_cols:
+                if num_col not in data.columns:
+                    raise ValueError(f"Column '{num_col}' not found in data")
+        logging.info(f"[{self.name}] Обучение NumCatInteractionGenerator.")
         for cat_col, num_cols in self.interactions.items():
             for num_col in num_cols:
-                group_means = data.groupby(cat_col)[num_col].mean()
-                self.group_means_[f"{num_col}_in_{cat_col}"] = group_means
-                print(f"  - Вычислены средние для '{num_col}' по группам '{cat_col}'.")
+                try:
+                    group_means = data.groupby(cat_col)[num_col].mean()
+                    self.group_means_[f"{num_col}_in_{cat_col}"] = group_means
+                    logging.info(f"  - Вычислены средние для '{num_col}' по группам '{cat_col}'.")
+                except Exception as e:
+                    logging.error(f"Error computing group means for {num_col} in {cat_col}: {e}")
+                    raise
+        # Precompute overall means to avoid data leakage
+        for num_cols in self.interactions.values():
+            for num_col in num_cols:
+                if num_col not in self.overall_means_:
+                    self.overall_means_[num_col] = data[num_col].mean()
                 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Вычисляет и добавляет признаки отклонения от среднего по группе.
         """
-        df = data.copy()
-        print(f"[{self.name}] Применение NumCatInteractionGenerator к {len(df)} строкам.")
+        for cat_col, num_cols in self.interactions.items():
+            if cat_col not in data.columns:
+                raise ValueError(f"Column '{cat_col}' not found in data")
+            for num_col in num_cols:
+                if num_col not in data.columns:
+                    raise ValueError(f"Column '{num_col}' not found in data")
+        df = data
+        logging.info(f"[{self.name}] Применение NumCatInteractionGenerator к {len(df)} строкам.")
         for cat_col, num_cols in self.interactions.items():
             for num_col in num_cols:
                 # 1. Присоединяем средние по группе к датафрейму
                 group_means = self.group_means_[f"{num_col}_in_{cat_col}"]
-                df_merged = df[[cat_col]].merge(group_means.rename('group_mean'),
-                                                left_on=cat_col, right_index=True, how='left')
-                
+                try:
+                    df_merged = df[[cat_col]].merge(group_means.rename('group_mean'),
+                                                    left_on=cat_col, right_index=True, how='left')
+                except Exception as e:
+                    logging.error(f"Error merging group means for {num_col} in {cat_col}: {e}")
+                    raise
+
                 # 2. Заполняем пропуски (для категорий, которых не было в трейне)
                 #    общим средним по числовой колонке.
-                df_merged['group_mean'].fillna(df[num_col].mean(), inplace=True)
-                
+                df_merged['group_mean'] = df_merged['group_mean'].fillna(self.overall_means_[num_col])
+
                 # 3. Вычисляем и создаем новые признаки
-                df[f"{num_col}_div_by_{cat_col}_mean"] = df[num_col] / (df_merged['group_mean'] + self.epsilon)
-                df[f"{num_col}_sub_by_{cat_col}_mean"] = df[num_col] - df_merged['group_mean']
-        
+                try:
+                    df[f"{num_col}_div_by_{cat_col}_mean"] = df[num_col] / (df_merged['group_mean'] + self.epsilon)
+                    df[f"{num_col}_sub_by_{cat_col}_mean"] = df[num_col] - df_merged['group_mean']
+                except Exception as e:
+                    logging.error(f"Error computing interaction features for {num_col} in {cat_col}: {e}")
+                    raise
+
         return df
