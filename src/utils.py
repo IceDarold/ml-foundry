@@ -1,38 +1,83 @@
+# src/utils.py
+
 import os
 import random
-import logging
+from datetime import datetime
+from typing import Any
+
 import numpy as np
+import torch  # Если используется PyTorch для трансформеров
 
-try:
-    import torch
-except ImportError:
-    torch = None
+# ==================================================================================
+# Воспроизводимость (Reproducibility)
+# ==================================================================================
 
+def seed_everything(seed: int) -> None:
+    """
+    Фиксирует сиды для всех основных источников случайности, чтобы обеспечить
+    воспроизводимость экспериментов.
 
-def seed_everything(seed: int):
+    Args:
+        seed (int): Целое число, используемое в качестве сида.
+    """
+    os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    if torch is not None:
+    
+    # Сиды для PyTorch, если он используется в проекте
+    # (например, для трансформерных эмбеддингов)
+    try:
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            # Некоторые операции в cuDNN могут быть недетерминированными.
+            # Эти флаги пытаются это исправить, но могут замедлить обучение.
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+    except ImportError:
+        print("PyTorch не найден. Сиды для PyTorch не установлены.")
+        
+    print(f"Все источники случайности зафиксированы сидом: {seed}")
+
+# ==================================================================================
+# Вспомогательные функции (Helpers)
+# ==================================================================================
+
+def get_timestamp() -> str:
+    """
+    Возвращает текущую временную метку в удобном для именования файлов формате.
+
+    Returns:
+        str: Строка формата 'ГГГГММДД_ЧЧММСС'.
+    """
+    return datetime.now().strftime('%Y%m%d_%H%M%S')
 
 
-def setup_logger(log_path: str):
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# ==================================================================================
+# Функции для работы с Hydra (Опционально, но полезно)
+# ==================================================================================
 
-    # Stream handler
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+def get_hydra_logging_directory() -> str:
+    """
 
-    # File handler
-    file_handler = logging.FileHandler(log_path)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    return logger
+    Возвращает текущую директорию логирования, созданную Hydra.
+    Полезно, если нужно получить доступ к этой папке из любой части кода.
+    
+    Returns:
+        str: Путь к директории Hydra для текущего запуска.
+        
+    Raises:
+        ImportError: Если hydra не установлена.
+        ValueError: Если функция вызвана вне Hydra-приложения.
+    """
+    try:
+        from hydra.core.hydra_config import HydraConfig
+        
+        if HydraConfig.initialized():
+            return HydraConfig.get().runtime.output_dir
+        else:
+            raise ValueError("Hydra-конфигурация не инициализирована. Запустите скрипт как Hydra-приложение.")
+            
+    except ImportError:
+        raise ImportError("Библиотека hydra-core не установлена.")

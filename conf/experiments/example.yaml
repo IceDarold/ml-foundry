@@ -1,0 +1,21 @@
+# Этот файл - полная спецификация для одного эксперимента.
+# Он наследует все от `config.yaml`, но переопределяет то, что нужно.
+
+defaults:
+  - override /model: lgbm
+  - override /feature_engineering: v1_baseline
+  - override /features: v1_all_features
+  - override /metric: roc_auc
+  - _self_
+
+# Можно добавить специфичные для эксперимента теги в W&B
+wandb:
+  tags: ["baseline", "lgbm", "exp001"]
+
+# Можно даже переопределить параметры модели прямо здесь
+model:
+  params:
+    learning_rate: 0.1```
+
+**Запуск обучения:**
+Теперь команда для запуска эксперимента становится очень чистой и осмысленной:

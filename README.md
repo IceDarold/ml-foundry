@@ -34,6 +34,30 @@ Replace `configs/lgbm_exp001.yaml` with the path to your desired configuration f
 
 ## Project Structure
 
+```
+ml-foundry/
+├── .gitignore
+├── LICENSE
+├── README.md
+├── requirements.txt
+├── train.py
+├── configs/
+│   ├── base_config.yaml
+│   └── lgbm_baseline_exp001.yaml
+├── data/
+├── notebooks/
+│   └── .gitkeep
+├── outputs/
+└── src/
+    ├── __init__.py
+    ├── config.py
+    ├── data_loader.py
+    ├── feature_engineering.py
+    ├── model.py
+    ├── utils.py
+    └── validation.py
+```
+
 - `src/`: Source code modules
   - `config.py`: Configuration management
   - `data_loader.py`: Data loading utilities
@@ -42,8 +66,13 @@ Replace `configs/lgbm_exp001.yaml` with the path to your desired configuration f
   - `utils.py`: Utility functions
   - `validation.py`: Validation and evaluation
 - `configs/`: YAML configuration files for experiments
+- `data/`: Directory for datasets
 - `notebooks/`: Jupyter notebooks for exploration and prototyping
+- `outputs/`: Directory for model outputs and results
 - `train.py`: Main training script
+- `requirements.txt`: Python dependencies
+- `LICENSE`: Project license
+- `.gitignore`: Git ignore rules
 
 ## Contributing
 
