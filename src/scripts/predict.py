@@ -1,16 +1,32 @@
 # src/predict.py
 
 import glob
+import os
 import time
 from pathlib import Path
+from typing import Dict, Any
 
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
 from tqdm import tqdm
 
+from src.exceptions import ConfigurationError, DataLoadError, ModelLoadError, ValidationError
+
 # Импортируем базовый класс, чтобы можно было загружать любую модель
 from src.models.base import ModelInterface
+
+
+def validate_config(cfg: DictConfig) -> None:
+    """
+    Validate configuration parameters.
+    """
+    if not cfg.inference.run_id:
+        raise ConfigurationError("run_id must be provided.")
+    if cfg.inference.id_col not in cfg.features.cols:
+        raise ConfigurationError("ID column must be in feature columns.")
+    if cfg.globals.target_col in cfg.features.cols:
+        raise ConfigurationError("Target column must not be in feature columns.")
 
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
@@ -22,24 +38,29 @@ def predict(cfg: DictConfig) -> None:
     применяет их к указанному набору признаков и сохраняет файл сабмишена.
     """
     start_time = time.time()
-    
+
+    validate_config(cfg)
+
     print("--- Запуск инференса ---")
     
     # --- 1. Проверка и подготовка путей ---
     run_id = cfg.inference.run_id
     if not run_id:
-        raise ValueError("Необходимо указать ID запуска (`inference.run_id`) для инференса!")
-        
+        raise ConfigurationError("Необходимо указать ID запуска (`inference.run_id`) для инференса!")
+
+    # Sanitize run_id to prevent path traversal
+    run_id = os.path.basename(run_id)
+
     print(f"Используются модели из W&B run_id: {run_id}")
-    
+
     # Ищем директорию с результатами по всему проекту
     # Это более надежно, чем жестко заданный путь.
     try:
         search_path = Path(hydra.utils.get_original_cwd()) / "outputs"
         models_path = next(search_path.glob(f"**/{run_id}"))
     except StopIteration:
-        raise FileNotFoundError(f"Не удалось найти директорию для run_id '{run_id}'. "
-                                f"Проверьте, что такой запуск существует в папке 'outputs'.")
+        raise FileNotFoundError("Не удалось найти директорию для указанного run_id. "
+                                "Проверьте, что такой запуск существует в папке 'outputs'.")
 
     print(f"Путь к моделям: {models_path}")
     
@@ -49,11 +70,13 @@ def predict(cfg: DictConfig) -> None:
     
     input_filename = cfg.inference.input_features_filename
     test_features_path = features_path / input_filename
-    
-    if not test_features_path.exists():
-        raise FileNotFoundError(f"Файл с признаками не найден: {test_features_path}")
-        
-    test_df = pd.read_parquet(test_features_path)
+
+    try:
+        if not test_features_path.exists():
+            raise FileNotFoundError("Файл с признаками не найден.")
+        test_df = pd.read_parquet(test_features_path)
+    except Exception as e:
+        raise DataLoadError("Failed to load test features file.") from e
     
     # Загружаем список колонок из конфига, соответствующего эксперименту
     feature_cols = cfg.features.cols
@@ -70,26 +93,32 @@ def predict(cfg: DictConfig) -> None:
         model_files = sorted(glob.glob(str(models_path / "model_full_train.pkl")))
 
     if not model_files:
-        raise FileNotFoundError(f"В директории {models_path} не найдены обученные модели.")
-        
+        raise FileNotFoundError("В указанной директории не найдены обученные модели.")
+
     print(f"Найдено {len(model_files)} моделей для предсказания.")
-    
+
     final_preds = None
-    
+
     for model_path in tqdm(model_files, desc="Предсказание по моделям"):
         # Загружаем модель
-        model: ModelInterface = ModelInterface.load(model_path)
-        
+        try:
+            model: ModelInterface = ModelInterface.load(model_path)
+        except Exception as e:
+            raise ModelLoadError("Failed to load model file.") from e
+
         fold_preds = model.predict_proba(X_test)
-        
+
         if final_preds is None:
             final_preds = fold_preds
         else:
             final_preds += fold_preds
-            
+
     # Усредняем предсказания, если моделей было несколько
     if len(model_files) > 1:
-        final_preds /= len(model_files)
+        if len(model_files) > 0:
+            final_preds /= len(model_files)
+        else:
+            raise ValueError("No models found for averaging predictions.")
 
     # --- 4. Сохранение сабмишена ---
     output_path = data_path / cfg.data.submissions_path
