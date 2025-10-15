@@ -4,9 +4,14 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
 
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+try:
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
