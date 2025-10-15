@@ -3,8 +3,14 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
-import torch
-from transformers import AutoTokenizer, AutoModel
+
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModel
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
 from tqdm import tqdm
 
 from ..base import FeatureGenerator
