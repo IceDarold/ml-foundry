@@ -2,6 +2,7 @@
 
 import glob
 import os
+import re
 import time
 from pathlib import Path
 from typing import Dict, Any
@@ -50,6 +51,9 @@ def predict(cfg: DictConfig) -> None:
 
     # Sanitize run_id to prevent path traversal
     run_id = os.path.basename(run_id)
+    # Additional validation: ensure run_id contains only safe characters
+    if not re.match(r'^[a-zA-Z0-9_-]+$', run_id):
+        raise ValidationError("run_id contains invalid characters. Only alphanumeric, underscore, and hyphen are allowed.")
 
     print(f"Используются модели из W&B run_id: {run_id}")
 
