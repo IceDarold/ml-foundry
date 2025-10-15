@@ -1,0 +1,24 @@
+# Tuned LightGBM experiment with optimized hyperparameters
+# Uses v2_advanced features and tuned model parameters
+
+defaults:
+  - override /feature_engineering: v2_advanced
+  - override /features: v2_selected
+  - _self_
+
+# Optimized hyperparameters for Titanic dataset
+model:
+  params:
+    learning_rate: 0.03
+    n_estimators: 1500
+    max_depth: 6
+    num_leaves: 20
+    min_child_samples: 10
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 0.1
+
+# W&B tags for experiment tracking
+wandb:
+  tags: ["tuned", "lgbm", "exp003", "hyperopt"]

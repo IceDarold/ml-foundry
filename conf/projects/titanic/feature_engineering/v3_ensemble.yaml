@@ -1,0 +1,112 @@
+# Ensemble-optimized feature engineering configuration for Titanic dataset
+# Additional engineered features designed to work well with ensemble methods
+
+name: "v3_ensemble"
+
+pipeline:
+  # Step 1: Missing value indicators
+  - _target_: src.features.numerical.flags.IsNullIndicator
+    name: "missing_indicators"
+    cols: ["Age", "Cabin", "Embarked"]
+
+  # Step 2: Target encoding for categorical features
+  - _target_: src.features.categorical.target_based.TargetEncoderGenerator
+    name: "target_encode_categorical"
+    cols: ["Sex", "Embarked", "Pclass"]
+    target_col: "Survived"
+    smoothing_strength: 10.0  # Lower smoothing for more variance
+
+  # Step 3: Weight of Evidence encoding for additional categorical encoding
+  - _target_: src.features.categorical.target_based.WoEEncoderGenerator
+    name: "woe_encode_categorical"
+    cols: ["Sex", "Embarked"]
+    target_col: "Survived"
+    epsilon: 1e-6
+
+  # Step 4: Multiple interaction features
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "age_pclass_interaction"
+    cols: ["Age", "Pclass"]
+    operations: ["multiply", "divide"]
+
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "fare_family_interaction"
+    cols: ["Fare", "SibSp", "Parch"]
+    operations: ["divide", "multiply"]
+
+  # Step 5: Multiple binning strategies
+  - _target_: src.features.numerical.binning.QuantileBinner
+    name: "age_quantile_bins"
+    cols: ["Age"]
+    n_bins: 5
+
+  - _target_: src.features.numerical.binning.EqualWidthBinner
+    name: "fare_equal_bins"
+    cols: ["Fare"]
+    n_bins: 4
+
+  # Step 6: Decision tree-based binning for Age
+  - _target_: src.features.numerical.binning.DecisionTreeBinner
+    name: "age_tree_bins"
+    cols: ["Age"]
+    target_col: "Survived"
+    max_depth: 3
+
+  # Step 7: Text features from Name
+  - _target_: src.features.text.statistics.TextStatisticsGenerator
+    name: "name_stats"
+    cols: ["Name"]
+    stats: ["length", "word_count", "unique_word_ratio"]
+
+  # Step 8: Cabin processing
+  - _target_: src.features.text.bow.CountVectorizerGenerator
+    name: "cabin_features"
+    cols: ["Cabin"]
+    prefix: "cabin"
+    max_features: 15
+    ngram_range: [1, 2]
+
+  # Step 9: Ticket frequency and patterns
+  - _target_: src.features.categorical.nominal.CountFrequencyEncoderGenerator
+    name: "ticket_frequency"
+    cols: ["Ticket"]
+    normalize: true
+
+  # Step 10: Family size and related features
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "family_features"
+    cols: ["SibSp", "Parch"]
+    operations: ["add", "multiply"]
+
+  # Step 11: Is alone indicator
+  - _target_: src.features.numerical.flags.ValueIndicator
+    name: "is_alone"
+    cols: ["SibSp", "Parch"]
+    value: 0
+
+  # Step 12: Outlier indicators
+  - _target_: src.features.numerical.flags.OutlierIndicator
+    name: "fare_outliers"
+    cols: ["Fare"]
+    multiplier: 1.5
+
+  # Step 13: Scaling with different strategies
+  - _target_: src.features.numerical.scaling.StandardScalerGenerator
+    name: "standard_scale"
+    cols: ["Age", "Fare"]
+
+  - _target_: src.features.numerical.scaling.RobustScalerGenerator
+    name: "robust_scale"
+    cols: ["SibSp", "Parch"]
+
+  # Step 14: Model-based features (K-means clustering)
+  - _target_: src.features.advanced.model_based.KMeansFeatureGenerator
+    name: "kmeans_clusters"
+    cols: ["Age", "Fare", "SibSp", "Parch"]
+    n_clusters: 6
+
+  # Step 15: PCA features for dimensionality reduction
+  - _target_: src.features.advanced.model_based.PCAGenerator
+    name: "pca_features"
+    cols: ["Age", "Fare", "SibSp", "Parch"]
+    n_components: 3

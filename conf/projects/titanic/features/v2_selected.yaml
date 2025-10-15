@@ -1,0 +1,60 @@
+# Feature selection configuration for Titanic dataset - Statistical and model-based selection
+# This configuration uses statistical methods (mutual information, chi-squared) and model-based selection (feature importance from tree models)
+
+name: "v2_selected"
+
+# Feature selection method configuration
+selection:
+  # Statistical methods
+  statistical:
+    # Mutual information for regression/classification
+    mutual_info:
+      enabled: true
+      n_neighbors: 3  # For continuous features
+      random_state: ${globals.seed}
+
+    # Chi-squared test for categorical features
+    chi2:
+      enabled: true
+      # Applied to categorical features vs target
+
+  # Model-based selection
+  model_based:
+    # Tree-based feature importance
+    tree_importance:
+      enabled: true
+      model: "lightgbm"
+      model_params:
+        objective: "binary"
+        metric: "auc"
+        n_estimators: 100
+        learning_rate: 0.1
+        max_depth: 6
+        n_jobs: -1
+        random_state: ${globals.seed}
+      cv_folds: 5
+
+    # Recursive feature elimination with cross-validation
+    rfe:
+      enabled: true
+      estimator: "rf"  # Random Forest
+      estimator_params:
+        n_estimators: 100
+        max_depth: 6
+        random_state: ${globals.seed}
+      cv_folds: 3
+      step: 1  # Remove 1 feature at each step
+
+  # Selection criteria
+  criteria:
+    # Minimum number of features to select
+    min_features: 10
+    # Maximum number of features to select
+    max_features: 50
+    # Selection threshold for statistical tests (p-value)
+    statistical_threshold: 0.05
+    # Minimum importance threshold for model-based methods
+    importance_threshold: 0.01
+
+# This will be populated dynamically after running feature selection
+# cols: []

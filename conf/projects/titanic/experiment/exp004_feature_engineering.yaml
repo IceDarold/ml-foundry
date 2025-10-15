@@ -1,0 +1,24 @@
+# Experiment showcasing advanced feature engineering impact
+# Uses v2_advanced features with tuned LightGBM to demonstrate feature engineering benefits
+
+defaults:
+  - override /feature_engineering: v2_advanced
+  - override /features: v2_selected
+  - _self_
+
+# Tuned hyperparameters optimized for advanced features
+model:
+  params:
+    learning_rate: 0.025
+    n_estimators: 1200
+    max_depth: 5
+    num_leaves: 15
+    min_child_samples: 15
+    subsample: 0.85
+    colsample_bytree: 0.85
+    reg_alpha: 0.05
+    reg_lambda: 0.05
+
+# W&B tags for experiment tracking
+wandb:
+  tags: ["feature_engineering", "advanced", "lgbm", "exp004"]

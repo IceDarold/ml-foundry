@@ -1,0 +1,25 @@
+# Simple ensemble experiment combining multiple models
+# Uses weighted averaging of predictions from different models
+
+defaults:
+  - override /feature_engineering: v2_advanced
+  - override /features: v2_selected
+  - _self_
+
+# Ensemble configuration
+ensemble:
+  method: "weighted_average"
+  models:
+    - name: "lgbm_baseline"
+      weight: 0.4
+      config_path: "exp001_baseline_lgbm"
+    - name: "catboost_baseline"
+      weight: 0.4
+      config_path: "exp002_baseline_catboost"
+    - name: "lgbm_tuned"
+      weight: 0.2
+      config_path: "exp003_tuned_lgbm"
+
+# W&B tags for experiment tracking
+wandb:
+  tags: ["ensemble", "weighted_average", "exp005"]

@@ -1,0 +1,32 @@
+# Baseline feature engineering configuration for Titanic dataset
+# Basic preprocessing with missing value imputation and simple encoding
+
+name: "v1_baseline"
+
+pipeline:
+  # Step 1: Missing value imputation
+  - _target_: src.features.numerical.flags.IsNullIndicator
+    name: "missing_indicators"
+    cols: ["Age", "Cabin", "Embarked"]
+
+  # Step 2: Impute missing values
+  - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+    name: "impute_categorical"
+    cols: ["Embarked"]
+    # Note: OneHotEncoder will handle missing values by creating a separate category
+
+  # Step 3: Basic categorical encoding
+  - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+    name: "ohe_sex"
+    cols: ["Sex"]
+
+  # Step 4: Basic numerical features (Age, Fare, SibSp, Parch)
+  - _target_: src.features.numerical.scaling.StandardScalerGenerator
+    name: "scale_numerical"
+    cols: ["Age", "Fare", "SibSp", "Parch"]
+
+  # Step 5: Family size calculation
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "family_size"
+    cols: ["SibSp", "Parch"]
+    operations: ["add"]

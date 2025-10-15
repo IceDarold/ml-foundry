@@ -1,0 +1,70 @@
+# Advanced feature engineering configuration for Titanic dataset
+# Includes target encoding, interactions, binning, and text features
+
+name: "v2_advanced"
+
+pipeline:
+  # Step 1: Missing value indicators
+  - _target_: src.features.numerical.flags.IsNullIndicator
+    name: "missing_indicators"
+    cols: ["Age", "Cabin", "Embarked"]
+
+  # Step 2: Target encoding for categorical features
+  - _target_: src.features.categorical.target_based.TargetEncoderGenerator
+    name: "target_encode_categorical"
+    cols: ["Sex", "Embarked", "Pclass"]
+    target_col: "Survived"
+    smoothing_strength: 20.0
+
+  # Step 3: Interaction features
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "age_pclass_interaction"
+    cols: ["Age", "Pclass"]
+    operations: ["multiply"]
+
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "fare_family_interaction"
+    cols: ["Fare", "SibSp", "Parch"]
+    operations: ["divide"]  # Fare per family member
+
+  # Step 4: Binning features
+  - _target_: src.features.numerical.binning.QuantileBinner
+    name: "age_bins"
+    cols: ["Age"]
+    n_bins: 5
+
+  - _target_: src.features.numerical.binning.QuantileBinner
+    name: "fare_bins"
+    cols: ["Fare"]
+    n_bins: 4
+
+  # Step 5: Text features from Name (title extraction)
+  - _target_: src.features.text.statistics.TextStatisticsGenerator
+    name: "name_stats"
+    cols: ["Name"]
+    stats: ["length", "word_count"]
+
+  # Step 6: Cabin deck extraction (text processing)
+  - _target_: src.features.text.bow.CountVectorizerGenerator
+    name: "cabin_deck"
+    cols: ["Cabin"]
+    prefix: "cabin"
+    max_features: 10
+    ngram_range: [1, 1]
+
+  # Step 7: Ticket frequency encoding
+  - _target_: src.features.categorical.nominal.CountFrequencyEncoderGenerator
+    name: "ticket_frequency"
+    cols: ["Ticket"]
+    normalize: true
+
+  # Step 8: Family size calculation
+  - _target_: src.features.interaction.NumericalInteractionGenerator
+    name: "family_size"
+    cols: ["SibSp", "Parch"]
+    operations: ["add"]
+
+  # Step 9: Scaling numerical features
+  - _target_: src.features.numerical.scaling.StandardScalerGenerator
+    name: "scale_numerical"
+    cols: ["Age", "Fare", "SibSp", "Parch"]

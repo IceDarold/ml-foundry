@@ -1,0 +1,65 @@
+# Feature selection configuration for Titanic dataset - Most important features
+# This configuration selects only the most important features based on permutation importance and recursive feature elimination
+
+name: "v3_important"
+
+# Advanced feature selection methods
+selection:
+  # Permutation importance
+  permutation_importance:
+    enabled: true
+    model: "lightgbm"
+    model_params:
+      objective: "binary"
+      metric: "auc"
+      n_estimators: 200
+      learning_rate: 0.05
+      max_depth: 6
+      n_jobs: -1
+      random_state: ${globals.seed}
+    cv_folds: 5
+    n_repeats: 3  # Number of times to permute each feature
+    scoring: "roc_auc"  # Metric for importance calculation
+
+  # Recursive Feature Elimination with Cross-Validation
+  rfecv:
+    enabled: true
+    estimator: "rf"  # Random Forest
+    estimator_params:
+      n_estimators: 100
+      max_depth: 8
+      min_samples_split: 5
+      min_samples_leaf: 2
+      random_state: ${globals.seed}
+    cv_folds: 5
+    step: 1  # Remove 1 feature at each step
+    min_features_to_select: 5  # Minimum number of features to keep
+
+  # SHAP-based feature selection
+  shap_selection:
+    enabled: true
+    model: "lightgbm"
+    model_params:
+      objective: "binary"
+      metric: "auc"
+      n_estimators: 100
+      learning_rate: 0.1
+      max_depth: 6
+      n_jobs: -1
+      random_state: ${globals.seed}
+    cv_folds: 3
+    max_evals: 50  # Maximum SHAP evaluations for efficiency
+
+  # Selection criteria
+  criteria:
+    # Minimum number of features to select
+    min_features: 8
+    # Maximum number of features to select
+    max_features: 25
+    # Permutation importance threshold (features with importance > threshold)
+    permutation_threshold: 0.001
+    # SHAP value threshold
+    shap_threshold: 0.01
+
+# This will be populated dynamically after running feature selection
+# cols: []

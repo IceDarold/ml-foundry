@@ -1,0 +1,21 @@
+defaults:
+  - _self_
+  - override /base/model: lgbm
+  - override /base/metric:
+      - main: accuracy
+      - additional: f1_score
+  - override /base/validation: stratified
+  - override /base/training: default
+  - override /base/wandb: default
+  - feature_engineering: ~
+  - features: ~
+  - experiment: ~
+
+globals:
+  seed: 42
+  id_col: "PassengerId"
+  target_col: "Survived"
+
+wandb:
+  project: "titanic-survival"
+  entity: "your-wandb-username" # ❗️ Replace with your username

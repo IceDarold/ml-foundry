@@ -1,0 +1,11 @@
+# Baseline experiment with LightGBM using default parameters
+# Uses v1_baseline feature engineering and v1_all features
+
+defaults:
+  - override /feature_engineering: v1_baseline
+  - override /features: v1_all
+  - _self_
+
+# W&B tags for experiment tracking
+wandb:
+  tags: ["baseline", "lgbm", "exp001"]

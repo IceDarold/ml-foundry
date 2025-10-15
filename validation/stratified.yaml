@@ -1,0 +1,10 @@
+# Stratified K-Fold validation scheme for Titanic
+_target_: src.validation.common.SklearnSplitterWrapper
+
+# Specify the sklearn splitter class
+splitter_class: "sklearn.model_selection.StratifiedKFold"
+
+# Parameters for StratifiedKFold
+n_splits: 5
+shuffle: true
+random_state: ${globals.seed}
