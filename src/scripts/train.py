@@ -15,6 +15,7 @@ import wandb
 from src import utils
 from src.models.base import ModelInterface
 from src.metrics.base import MetricInterface
+from src.validation.base import BaseSplitter # Наш новый интерфейс для валидации
 
 warnings.filterwarnings("ignore")
 
@@ -26,8 +27,9 @@ def train(cfg: DictConfig) -> float:
 
     1. Инициализирует W&B run.
     2. Скачивает версионированный набор признаков из W&B Artifacts.
-    3. Выполняет обучение в одном из двух режимов (CV или Full Data).
-    4. Сохраняет и логирует артефакты (модели, OOF, сабмишен).
+    3. Выполняет обучение в одном из двух режимов (CV или Full Data), используя
+       гибкий модуль валидации.
+    4. Сохраняет и логирует артефакты (модели, OOF-предсказания, сабмишен).
     """
     start_time = time.time()
     
@@ -91,7 +93,7 @@ def train(cfg: DictConfig) -> float:
     print(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
     
     # ==========================================================================
-    # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ (остается без изменений)
+    # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ
     # ==========================================================================
     if cfg.training.full_data:
         # --- РЕЖИМ 1: ОБУЧЕНИЕ НА ВСЕХ ДАННЫХ ---
@@ -99,6 +101,7 @@ def train(cfg: DictConfig) -> float:
         
         model: ModelInterface = hydra.utils.instantiate(cfg.model)
         
+        # Убираем параметры, специфичные для CV, если они есть
         fit_params = cfg.training.fit_params.copy()
         fit_params.pop('early_stopping_rounds', None)
         
@@ -115,7 +118,20 @@ def train(cfg: DictConfig) -> float:
         # --- РЕЖИМ 2: ОБУЧЕНИЕ НА КРОСС-ВАЛИДАЦИИ ---
         print("\n--- Режим: Обучение на кросс-валидации ---")
         
-        cv_splitter = hydra.utils.instantiate(cfg.validation.strategy)
+        # Инстанциируем сплиттер из нашего нового модуля валидации
+        splitter: BaseSplitter = hydra.utils.instantiate(cfg.validation)
+        print(f"Стратегия валидации: {splitter.__class__.__name__} ({splitter.get_n_splits()} фолдов)")
+        
+        # Подготовка групп, если они требуются для сплиттера (например, GroupKFold)
+        groups = None
+        group_col = cfg.validation.get("group_col")
+        if group_col:
+            if group_col not in train_df.columns:
+                raise ValueError(f"Колонка для группировки '{group_col}' не найдена в данных.")
+            groups = train_df[group_col]
+            print(f"Используется группировка по колонке: {group_col}")
+        
+        # Инициализация метрик
         main_metric: MetricInterface = hydra.utils.instantiate(cfg.metric.main)
         main_metric_name = main_metric.__class__.__name__.replace("Metric", "")
         
@@ -123,16 +139,20 @@ def train(cfg: DictConfig) -> float:
         if 'additional' in cfg.metric and cfg.metric.additional:
             for metric_cfg in cfg.metric.additional:
                 metric_obj = hydra.utils.instantiate(metric_cfg)
-                metric_obj.name = metric_cfg.name
+                # Сохраняем имя метрики для логирования, как оно задано в конфиге
+                metric_obj.name = metric_cfg.name 
                 additional_metrics.append(metric_obj)
 
         oof_preds = np.zeros(len(train_df))
         test_preds = np.zeros(len(test_df))
         fold_scores = []
         
-        for fold, (train_idx, valid_idx) in enumerate(cv_splitter.split(X, y)):
+        # Получаем итератор для разделения данных
+        split_iterator = splitter.split(data=train_df, y=y, groups=groups)
+        
+        for fold, (train_idx, valid_idx) in enumerate(split_iterator):
             fold_start_time = time.time()
-            print(f"\n--- Фолд {fold + 1}/{cfg.validation.strategy.n_splits} ---")
+            print(f"\n--- Фолд {fold + 1}/{splitter.get_n_splits()} ---")
             
             X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
             X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
@@ -147,18 +167,25 @@ def train(cfg: DictConfig) -> float:
             
             valid_preds_proba = model.predict_proba(X_valid)
             oof_preds[valid_idx] = valid_preds_proba
-            test_preds += model.predict_proba(X_test) / cv_splitter.get_n_splits()
+            test_preds += model.predict_proba(X_test) / splitter.get_n_splits()
             
+            # Подготовка дополнительных данных для метрики (например, групп)
+            metric_kwargs = {}
+            if groups is not None:
+                metric_kwargs['groups'] = groups.iloc[valid_idx]
+            
+            # Логирование
             log_dict = {"fold": fold + 1}
-            fold_score = main_metric(y_valid.values, valid_preds_proba)
+            fold_score = main_metric(y_valid.values, valid_preds_proba, **metric_kwargs)
             fold_scores.append(fold_score)
             log_dict[f"fold_score/{main_metric_name}"] = fold_score
             
             for metric_obj in additional_metrics:
-                add_score = metric_obj(y_valid.values, valid_preds_proba)
+                add_score = metric_obj(y_valid.values, valid_preds_proba, **metric_kwargs)
                 log_dict[f"fold_score/{metric_obj.name}"] = add_score
             run.log(log_dict)
             
+            # Сохранение модели
             model_path = output_dir / f"model_fold_{fold + 1}.pkl"
             model.save(model_path)
             
