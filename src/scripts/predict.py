@@ -29,7 +29,7 @@ def validate_config(cfg: DictConfig) -> None:
         raise ConfigurationError("Target column must not be in feature columns.")
 
 
-@hydra.main(config_path="../conf", config_name="config", version_base=None)
+@hydra.main(config_path="conf", config_name="config", version_base=None)
 def predict(cfg: DictConfig) -> None:
     """
     Скрипт для инференса (предсказаний).
