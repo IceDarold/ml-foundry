@@ -5,7 +5,12 @@ from typing import Dict, Any
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-import implicit
+
+try:
+    import implicit
+    IMPLICIT_AVAILABLE = True
+except ImportError:
+    IMPLICIT_AVAILABLE = False
 
 # Импортируем наш базовый класс
 from ..base import FeatureGenerator, FitStrategy
