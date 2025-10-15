@@ -2,9 +2,12 @@
 
 import pandas as pd
 from typing import List, Dict, Any
-# Для Hashing Encoder используем хорошо зарекомендовавшую себя библиотеку
-# Убедитесь, что она добавлена в ваш pyproject.toml или requirements.txt
-from category_encoders import HashingEncoder
+
+try:
+    from category_encoders import HashingEncoder
+    CATEGORY_ENCODERS_AVAILABLE = True
+except ImportError:
+    CATEGORY_ENCODERS_AVAILABLE = False
 
 from ..base import FeatureGenerator
 
