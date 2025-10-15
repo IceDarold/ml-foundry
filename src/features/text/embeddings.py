@@ -3,7 +3,12 @@
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
-import gensim
+
+try:
+    import gensim
+    GENSIM_AVAILABLE = True
+except ImportError:
+    GENSIM_AVAILABLE = False
 
 from ..base import FeatureGenerator
 
