@@ -3,7 +3,7 @@
 import warnings
 from pathlib import Path
 import time
-from typing import List, Dict, Any
+from typing import List
 
 import hydra
 import numpy as np
@@ -15,19 +15,8 @@ import wandb
 from src import utils
 from src.models.base import ModelInterface
 from src.metrics.base import MetricInterface
-from src.exceptions import ConfigurationError, DataLoadError
 
 warnings.filterwarnings("ignore")
-
-
-def validate_config(cfg: DictConfig) -> None:
-    """
-    Validate configuration parameters.
-    """
-    if cfg.globals.id_col not in cfg.features.cols:
-        raise ConfigurationError("ID column must be in feature columns.")
-    if cfg.globals.target_col in cfg.features.cols:
-        raise ConfigurationError("Target column must not be in feature columns.")
 
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
@@ -41,9 +30,7 @@ def train(cfg: DictConfig) -> float:
     4. Сохраняет и логирует артефакты (модели, OOF, сабмишен).
     """
     start_time = time.time()
-
-    validate_config(cfg)
-
+    
     # === 1. Инициализация W&B и подготовка ===
     utils.seed_everything(cfg.globals.seed)
     # Hydra создает уникальную директорию для каждого запуска.
@@ -62,159 +49,155 @@ def train(cfg: DictConfig) -> float:
         tags=cfg.wandb.tags,
         job_type="training",
     )
+    
+    print("--- Конфигурация эксперимента ---")
+    print(OmegaConf.to_yaml(cfg))
+    print("-----------------------------------")
+    
+    # === 2. Загрузка данных из артефакта W&B ===
+    print("\n--- Загрузка набора признаков из артефакта W&B ---")
+    
+    feature_artifact_name = cfg.feature_engineering.name
+    # Формируем полное имя артефакта для скачивания
+    artifact_to_use = f"{cfg.wandb.entity}/{cfg.wandb.project}/{feature_artifact_name}:latest"
+    print(f"Используется артефакт: {artifact_to_use}")
+    
+    # Эта команда скачивает артефакт и регистрирует его как входные данные для этого run'а
     try:
+        artifact = run.use_artifact(artifact_to_use)
+    except wandb.errors.CommError as e:
+        print(f"\n[ОШИБКА] Не удалось найти артефакт '{artifact_to_use}'.")
+        print("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
+        raise e
 
-        print("--- Конфигурация эксперимента ---")
-        print(OmegaConf.to_yaml(cfg))
-        print("-----------------------------------")
+    # Получаем путь к локальной папке, куда был скачан артефакт
+    artifact_dir = Path(artifact.download())
+    
+    train_features_path = artifact_dir / f"train_{feature_artifact_name}.parquet"
+    test_features_path = artifact_dir / f"test_{feature_artifact_name}.parquet"
+    
+    train_df = pd.read_parquet(train_features_path)
+    test_df = pd.read_parquet(test_features_path)
+    
+    print("Признаки успешно загружены из артефакта W&B.")
+    
+    feature_cols = cfg.features.cols
+    target_col = cfg.globals.target_col
+    
+    X = train_df[feature_cols]
+    y = train_df[target_col]
+    X_test = test_df[feature_cols]
+    
+    print(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
+    
+    # ==========================================================================
+    # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ (остается без изменений)
+    # ==========================================================================
+    if cfg.training.full_data:
+        # --- РЕЖИМ 1: ОБУЧЕНИЕ НА ВСЕХ ДАННЫХ ---
+        print("\n--- Режим: Обучение на 100% данных ---")
+        
+        model: ModelInterface = hydra.utils.instantiate(cfg.model)
+        
+        fit_params = cfg.training.fit_params.copy()
+        fit_params.pop('early_stopping_rounds', None)
+        
+        model.fit(X, y, **fit_params)
+        test_preds = model.predict_proba(X_test)
+        
+        model_path = output_dir / "model_full_train.pkl"
+        model.save(model_path)
+        print(f"Модель, обученная на всех данных, сохранена в: {model_path}")
 
-        # === 2. Загрузка данных из артефакта W&B ===
-        print("\n--- Загрузка набора признаков из артефакта W&B ---")
+        oof_score_mean = -1.0
+        
+    else:
+        # --- РЕЖИМ 2: ОБУЧЕНИЕ НА КРОСС-ВАЛИДАЦИИ ---
+        print("\n--- Режим: Обучение на кросс-валидации ---")
+        
+        cv_splitter = hydra.utils.instantiate(cfg.validation.strategy)
+        main_metric: MetricInterface = hydra.utils.instantiate(cfg.metric.main)
+        main_metric_name = main_metric.__class__.__name__.replace("Metric", "")
+        
+        additional_metrics: List[MetricInterface] = []
+        if 'additional' in cfg.metric and cfg.metric.additional:
+            for metric_cfg in cfg.metric.additional:
+                metric_obj = hydra.utils.instantiate(metric_cfg)
+                metric_obj.name = metric_cfg.name
+                additional_metrics.append(metric_obj)
 
-        feature_artifact_name = cfg.feature_engineering.name
-        # Формируем полное имя артефакта для скачивания
-        artifact_to_use = f"{cfg.wandb.entity}/{cfg.wandb.project}/{feature_artifact_name}:latest"
-        print(f"Используется артефакт: {artifact_to_use}")
-
-        # Эта команда скачивает артефакт и регистрирует его как входные данные для этого run'а
-        try:
-            artifact = run.use_artifact(artifact_to_use)
-        except wandb.errors.CommError as e:
-            print(f"\n[ОШИБКА] Не удалось найти артефакт '{artifact_to_use}'.")
-            print("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
-            raise e
-
-        # Получаем путь к локальной папке, куда был скачан артефакт
-        artifact_dir = Path(artifact.download())
-
-        train_features_path = artifact_dir / f"train_{feature_artifact_name}.parquet"
-        test_features_path = artifact_dir / f"test_{feature_artifact_name}.parquet"
-
-        try:
-            train_df = pd.read_parquet(train_features_path)
-            test_df = pd.read_parquet(test_features_path)
-        except Exception as e:
-            raise DataLoadError("Failed to load training or test features from artifact.") from e
-
-        print("Признаки успешно загружены из артефакта W&B.")
-
-        feature_cols = cfg.features.cols
-        target_col = cfg.globals.target_col
-
-        X = train_df[feature_cols]
-        y = train_df[target_col]
-        X_test = test_df[feature_cols]
-
-        print(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
-
-        # ==========================================================================
-        # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ (остается без изменений)
-        # ==========================================================================
-        if cfg.training.full_data:
-            # --- РЕЖИМ 1: ОБУЧЕНИЕ НА ВСЕХ ДАННЫХ ---
-            print("\n--- Режим: Обучение на 100% данных ---")
-
+        oof_preds = np.zeros(len(train_df))
+        test_preds = np.zeros(len(test_df))
+        fold_scores = []
+        
+        for fold, (train_idx, valid_idx) in enumerate(cv_splitter.split(X, y)):
+            fold_start_time = time.time()
+            print(f"\n--- Фолд {fold + 1}/{cfg.validation.strategy.n_splits} ---")
+            
+            X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
+            X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
+            
             model: ModelInterface = hydra.utils.instantiate(cfg.model)
+            
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_valid, y_valid)],
+                **cfg.training.fit_params,
+            )
+            
+            valid_preds_proba = model.predict_proba(X_valid)
+            oof_preds[valid_idx] = valid_preds_proba
+            test_preds += model.predict_proba(X_test) / cv_splitter.get_n_splits()
+            
+            log_dict = {"fold": fold + 1}
+            fold_score = main_metric(y_valid.values, valid_preds_proba)
+            fold_scores.append(fold_score)
+            log_dict[f"fold_score/{main_metric_name}"] = fold_score
+            
+            for metric_obj in additional_metrics:
+                add_score = metric_obj(y_valid.values, valid_preds_proba)
+                log_dict[f"fold_score/{metric_obj.name}"] = add_score
+            run.log(log_dict)
+            
+            model_path = output_dir / f"model_fold_{fold + 1}.pkl"
+            model.save(model_path)
+            
+            fold_end_time = time.time()
+            print(f"Скор на фолде {fold + 1} ({main_metric_name}): {fold_score:.5f} (за {fold_end_time - fold_start_time:.2f} с)")
 
-            fit_params = cfg.training.fit_params.copy()
-            fit_params.pop('early_stopping_rounds', None)
+        oof_score_mean = np.mean(fold_scores)
+        oof_score_std = np.std(fold_scores)
+        
+        print(f"\n--- Итоговый результат CV ---")
+        print(f"Средний OOF-скор ({main_metric_name}): {oof_score_mean:.5f} (Std: {oof_score_std:.5f})")
+        
+        run.summary[f"oof_score_mean"] = oof_score_mean
+        run.summary[f"oof_score_std"] = oof_score_std
 
-            model.fit(X, y, **fit_params)
-            test_preds = model.predict_proba(X_test)
+        # Сохранение OOF-предсказаний
+        oof_df = pd.DataFrame({cfg.globals.id_col: train_df[cfg.globals.id_col], 'oof_preds': oof_preds})
+        oof_path = output_dir / "oof_predictions.csv"
+        oof_df.to_csv(oof_path, index=False)
 
-            model_path = output_dir / "model_full_train.pkl"
-            model.save(str(model_path))
-            print(f"Модель, обученная на всех данных, сохранена в: {model_path}")
-
-            oof_score_mean = -1.0
-
-        else:
-            # --- РЕЖИМ 2: ОБУЧЕНИЕ НА КРОСС-ВАЛИДАЦИИ ---
-            print("\n--- Режим: Обучение на кросс-валидации ---")
-
-            cv_splitter = hydra.utils.instantiate(cfg.validation.strategy)
-            main_metric: MetricInterface = hydra.utils.instantiate(cfg.metric.main)
-            main_metric_name = main_metric.__class__.__name__.replace("Metric", "")
-
-            additional_metrics: List[MetricInterface] = []
-            if 'additional' in cfg.metric and cfg.metric.additional:
-                for metric_cfg in cfg.metric.additional:
-                    metric_obj = hydra.utils.instantiate(metric_cfg)
-                    metric_obj.name = metric_cfg.name
-                    additional_metrics.append(metric_obj)
-
-            oof_preds = np.zeros(len(train_df))
-            test_preds = np.zeros(len(test_df))
-            fold_scores = []
-
-            for fold, (train_idx, valid_idx) in enumerate(cv_splitter.split(X, y)):
-                fold_start_time = time.time()
-                print(f"\n--- Фолд {fold + 1}/{cfg.validation.strategy.n_splits} ---")
-
-                X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-                X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
-
-                model: ModelInterface = hydra.utils.instantiate(cfg.model)
-
-                model.fit(
-                    X_train, y_train,
-                    eval_set=[(X_valid, y_valid)],
-                    **cfg.training.fit_params,
-                )
-
-                valid_preds_proba = model.predict_proba(X_valid)
-                oof_preds[valid_idx] = valid_preds_proba
-                test_preds += model.predict_proba(X_test) / cv_splitter.get_n_splits()
-
-                log_dict = {"fold": fold + 1}
-                fold_score = main_metric(y_valid.values, valid_preds_proba)
-                fold_scores.append(fold_score)
-                log_dict[f"fold_score/{main_metric_name}"] = fold_score
-
-                for metric_obj in additional_metrics:
-                    add_score = metric_obj(y_valid.values, valid_preds_proba)
-                    log_dict[f"fold_score/{metric_obj.name}"] = add_score
-                run.log(log_dict)
-
-                model_path = output_dir / f"model_fold_{fold + 1}.pkl"
-                model.save(str(model_path))
-
-                fold_end_time = time.time()
-                print(f"Скор на фолде {fold + 1} ({main_metric_name}): {fold_score:.5f} (за {fold_end_time - fold_start_time:.2f} с)")
-
-            oof_score_mean = np.mean(fold_scores)
-            oof_score_std = np.std(fold_scores)
-
-            print(f"\n--- Итоговый результат CV ---")
-            print(f"Средний OOF-скор ({main_metric_name}): {oof_score_mean:.5f} (Std: {oof_score_std:.5f})")
-
-            run.summary[f"oof_score_mean"] = oof_score_mean
-            run.summary[f"oof_score_std"] = oof_score_std
-
-            # Сохранение OOF-предсказаний
-            oof_df = pd.DataFrame({cfg.globals.id_col: train_df[cfg.globals.id_col], 'oof_preds': oof_preds})
-            oof_path = output_dir / "oof_predictions.csv"
-            oof_df.to_csv(oof_path, index=False)
-
-        # === ФИНАЛЬНЫЙ ШАГ: СОХРАНЕНИЕ САБМИШЕНА И АРТЕФАКТОВ ===
-        print("\n--- Сохранение артефактов ---")
-        submission_df = pd.DataFrame({cfg.globals.id_col: test_df[cfg.globals.id_col], target_col: test_preds})
-        submission_path = output_dir / "submission.csv"
-        submission_df.to_csv(submission_path, index=False)
-
-        output_artifact = wandb.Artifact(name=f"output-{run.id}", type="output")
-        output_artifact.add_file(str(submission_path))
-        if not cfg.training.full_data:
-            output_artifact.add_file(str(oof_path))
-        output_artifact.add_dir(str(output_dir), name="models")
-        run.log_artifact(output_artifact)
-
-        end_time = time.time()
-        print(f"Все результаты сохранены в: {output_dir}")
-        print(f"Пайплайн завершен за {end_time - start_time:.2f} секунд.")
-    finally:
-        run.finish()
-
+    # === ФИНАЛЬНЫЙ ШАГ: СОХРАНЕНИЕ САБМИШЕНА И АРТЕФАКТОВ ===
+    print("\n--- Сохранение артефактов ---")
+    submission_df = pd.DataFrame({cfg.globals.id_col: test_df[cfg.globals.id_col], target_col: test_preds})
+    submission_path = output_dir / "submission.csv"
+    submission_df.to_csv(submission_path, index=False)
+    
+    output_artifact = wandb.Artifact(name=f"output-{run.id}", type="output")
+    output_artifact.add_file(str(submission_path))
+    if not cfg.training.full_data:
+        output_artifact.add_file(str(oof_path))
+    output_artifact.add_dir(str(output_dir), name="models")
+    run.log_artifact(output_artifact)
+    
+    end_time = time.time()
+    print(f"Все результаты сохранены в: {output_dir}")
+    print(f"Пайплайн завершен за {end_time - start_time:.2f} секунд.")
+    
+    run.finish()
+    
     return oof_score_mean
 
 

@@ -146,4 +146,11 @@ def stack(cfg: DictConfig) -> None:
     run.finish()
 
 if __name__ == "__main__":
-    stack()
+    try:
+        stack()
+    except Exception as e:
+        print(f"\nКритическая ошибка во время выполнения: {e}")
+        if wandb.run:
+            print("Завершение W&B run с ошибкой...")
+            wandb.finish(exit_code=1)
+        raise
