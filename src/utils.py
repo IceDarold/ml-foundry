@@ -6,7 +6,11 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
-import torch  # Если используется PyTorch для трансформеров
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 # ==================================================================================
 # Воспроизводимость (Reproducibility)
