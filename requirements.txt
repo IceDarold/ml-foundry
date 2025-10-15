@@ -14,6 +14,7 @@ transformers>=4.40.1
 category-encoders>=2.6.3
 optuna>=3.6.1
 # optuna-integration>=3.6.1  # Commented out due to version conflict
+implicit>=0.7.2
 gensim>=4.3.2
 tqdm
 kaggle>=1.6.14

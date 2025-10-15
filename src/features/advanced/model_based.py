@@ -7,6 +7,10 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.ensemble import RandomForestClassifier
 
 from ..base import FeatureGenerator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from omegaconf import DictConfig
 
 # ==================================================================================
 # KMeansFeatureGenerator
@@ -101,7 +105,7 @@ class TreeLeafFeatureGenerator(FeatureGenerator):
     # Этот генератор - supervised, поэтому обучаем его только на трейне
     fit_strategy = "train_only"
     
-    def __init__(self, name: str, feature_cols: List[str], target_col: str, model_config: DictConfig):
+    def __init__(self, name: str, feature_cols: List[str], target_col: str, model_config: "DictConfig"):
         super().__init__(name)
         self.feature_cols = feature_cols
         self.target_col = target_col
@@ -109,6 +113,7 @@ class TreeLeafFeatureGenerator(FeatureGenerator):
         
         # Инстанциируем модель из переданного конфига
         print(f"[{self.name}] Инициализация модели для генерации листьев...")
+        import hydra
         self.model = hydra.utils.instantiate(self.model_config)
 
     def fit(self, data: pd.DataFrame) -> None:

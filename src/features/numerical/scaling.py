@@ -5,6 +5,10 @@ from typing import List, Any
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 from ..base import FeatureGenerator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from omegaconf import DictConfig
 
 # ==================================================================================
 # StandardScalerGenerator
