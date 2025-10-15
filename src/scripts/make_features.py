@@ -16,6 +16,7 @@ import src.features
 
 from src.features.base import FeatureGenerator
 from src import utils
+from src.data_loaders.factory import create_data_loader
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
@@ -37,11 +38,10 @@ def make_features(cfg: DictConfig) -> None:
     print("---------------------------------------------")
     
     # --- 1. Загрузка исходных данных ---
-    data_path = Path(hydra.utils.get_original_cwd()) / "data"
-    
-    processed_path = data_path / cfg.data.processed_path
-    train_df = pd.read_csv(processed_path / cfg.data.train_file)
-    test_df = pd.read_csv(processed_path / cfg.data.test_file)
+    data_loader = create_data_loader(cfg.data)
+    data_loader.ensure_data_available()
+    train_df = data_loader.load_train_data()
+    test_df = data_loader.load_test_data()
     
     combined_df = pd.concat([train_df, test_df], ignore_index=True, sort=False)
     
@@ -75,6 +75,7 @@ def make_features(cfg: DictConfig) -> None:
         print(f"   Новые размеры: train.shape={train_df.shape}, test.shape={test_df.shape}")
 
     # --- 3. Сохранение локальных файлов ---
+    data_path = Path(hydra.utils.get_original_cwd()) / "data"
     features_path = data_path / cfg.data.features_path
     features_path.mkdir(parents=True, exist_ok=True)
     

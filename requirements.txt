@@ -16,3 +16,4 @@ optuna>=3.6.1
 # optuna-integration>=3.6.1  # Commented out due to version conflict
 gensim>=4.3.2
 tqdm
+kaggle>=1.6.14

@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List, Dict, Any
 from scipy.stats import boxcox, yeojohnson
 
-from .base import FeatureGenerator
+from ..base import FeatureGenerator
 
 # ==================================================================================
 # LogTransformer

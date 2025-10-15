@@ -5,8 +5,15 @@ general:
 
 # Data Settings - Common data paths and configurations
 data:
-  train_path: "data/raw/train.csv"
-  test_path: "data/raw/test.csv"
+  data_source:
+    type: "local"  # Options: local, kaggle
+    # For local data:
+    train_path: "data/raw/train.csv"
+    test_path: "data/raw/test.csv"
+    # For Kaggle data:
+    # dataset_name: "username/dataset-name"  # For datasets
+    # competition_name: "competition-name"  # For competitions
+    # data_dir: "data"  # Base directory for data storage
   target_col: "target"  # Name of the target column
 
 # Feature Engineering Settings - Placeholder for feature classes

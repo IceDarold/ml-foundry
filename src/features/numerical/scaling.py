@@ -4,7 +4,7 @@ import pandas as pd
 from typing import List, Any
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
-from .base import FeatureGenerator
+from ..base import FeatureGenerator
 
 # ==================================================================================
 # StandardScalerGenerator
