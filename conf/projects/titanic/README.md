@@ -32,7 +32,7 @@ wandb:
 ### Run Your First Experiment
 ```bash
 # Run baseline LightGBM experiment
-make train E=exp001_baseline_lgbm
+make baseline
 ```
 
 This command will:
@@ -62,8 +62,8 @@ The project follows a 4-stage approach, each building on the previous to systema
 
 **Commands**:
 ```bash
-make train E=exp001_baseline_lgbm    # LightGBM baseline
-make train E=exp002_baseline_catboost # CatBoost baseline
+make train EXPERIMENT=exp001_baseline_lgbm    # LightGBM baseline
+make train EXPERIMENT=exp002_baseline_catboost # CatBoost baseline
 ```
 
 ### Stage 2: Feature Engineering (0.80-0.85 accuracy)
@@ -84,7 +84,7 @@ make train E=exp002_baseline_catboost # CatBoost baseline
 
 **Commands**:
 ```bash
-make train E=exp004_feature_engineering
+make train EXPERIMENT=exp004_feature_engineering
 ```
 
 ### Stage 3: Model Tuning (0.82-0.87 accuracy)
@@ -103,8 +103,8 @@ make train E=exp004_feature_engineering
 
 **Commands**:
 ```bash
-make tune T=titanic_lgbm E=exp003_tuned_lgbm
-make train E=exp003_tuned_lgbm  # Use tuned parameters
+make tune TUNING=titanic_lgbm EXPERIMENT=exp003_tuned_lgbm
+make train EXPERIMENT=exp003_tuned_lgbm  # Use tuned parameters
 ```
 
 ### Stage 4: Ensemble Methods (0.83-0.88+ accuracy)
@@ -122,15 +122,15 @@ make train E=exp003_tuned_lgbm  # Use tuned parameters
 **Commands**:
 ```bash
 # Train base models first
-make train E=exp001_baseline_lgbm
-make train E=exp002_baseline_catboost
-make train E=exp003_tuned_lgbm
+make train EXPERIMENT=exp001_baseline_lgbm
+make train EXPERIMENT=exp002_baseline_catboost
+make train EXPERIMENT=exp003_tuned_lgbm
 
 # Create ensemble
-make train E=exp005_ensemble
+make ensemble
 
 # Advanced stacking
-make stack S=titanic_stacking_v1
+make stacking STACKING=titanic_stacking_v1
 ```
 
 ## Configuration Reference
@@ -184,28 +184,28 @@ Three approaches to feature selection:
 ### Core Workflow Commands
 ```bash
 # Generate features for an experiment
-make features E=exp001_baseline_lgbm
+make features EXPERIMENT=exp001_baseline_lgbm
 
 # Select important features
-make select E=exp001_baseline_lgbm SEL=v2_selected
+make select EXPERIMENT=exp001_baseline_lgbm SELECTION=v2_selected
 
 # Train model with cross-validation
-make train E=exp001_baseline_lgbm
+make train EXPERIMENT=exp001_baseline_lgbm
 
 # Train on full dataset (for final submission)
-make fulltrain E=exp001_baseline_lgbm
+make fulltrain EXPERIMENT=exp001_baseline_lgbm
 
 # Generate predictions
-make predict I=your_inference_config
+make predict INFERENCE=your_inference_config
 ```
 
 ### Advanced Commands
 ```bash
 # Hyperparameter tuning
-make tune T=titanic_lgbm E=exp003_tuned_lgbm
+make tune TUNING=titanic_lgbm EXPERIMENT=exp003_tuned_lgbm
 
 # Create stacking ensemble
-make stack S=titanic_stacking_v1
+make stacking STACKING=titanic_stacking_v1
 
 # Pseudo-labeling pipeline
 make pseudo
@@ -214,8 +214,8 @@ make pseudo
 ### Custom Experiment Variables
 Override default experiment names:
 ```bash
-make train E=exp004_feature_engineering
-make tune T=catboost_search E=exp002_baseline_catboost
+make train EXPERIMENT=exp004_feature_engineering
+make tune TUNING=catboost_search EXPERIMENT=exp002_baseline_catboost
 ```
 
 ## Results Interpretation

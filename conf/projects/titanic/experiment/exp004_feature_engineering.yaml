@@ -2,12 +2,11 @@
 # Uses v2_advanced features with tuned LightGBM to demonstrate feature engineering benefits
 
 defaults:
-  - override /feature_engineering: v2_advanced
-  - override /features: v2_selected
   - _self_
 
 # Tuned hyperparameters optimized for advanced features
 model:
+  _target_: src.models.lgbm.LGBMModel
   params:
     learning_rate: 0.025
     n_estimators: 1200
@@ -22,3 +21,93 @@ model:
 # W&B tags for experiment tracking
 wandb:
   tags: ["feature_engineering", "advanced", "lgbm", "exp004"]
+
+feature_engineering:
+  name: "v2_advanced"
+  pipeline:
+    - _target_: src.features.numerical.flags.IsNullIndicator
+      name: "missing_indicators"
+      cols: ["Age", "Cabin", "Embarked"]
+    - _target_: src.features.categorical.target_based.TargetEncoderGenerator
+      name: "target_encode_categorical"
+      cols: ["Sex", "Embarked", "Pclass"]
+      target_col: "Survived"
+      smoothing_strength: 20.0
+    - _target_: src.features.interaction.NumericalInteractionGenerator
+      name: "age_pclass_interaction"
+      cols: ["Age", "Pclass"]
+      operations: ["multiply"]
+    - _target_: src.features.interaction.NumericalInteractionGenerator
+      name: "fare_family_interaction"
+      cols: ["Fare", "SibSp", "Parch"]
+      operations: ["divide"]
+    - _target_: src.features.numerical.binning.QuantileBinner
+      name: "age_bins"
+      cols: ["Age"]
+      n_bins: 5
+    - _target_: src.features.numerical.binning.QuantileBinner
+      name: "fare_bins"
+      cols: ["Fare"]
+      n_bins: 4
+    - _target_: src.features.text.statistics.TextStatisticsGenerator
+      name: "name_stats"
+      cols: ["Name"]
+      stats: ["text_length", "word_count"]
+    - _target_: src.features.text.bow.CountVectorizerGenerator
+      name: "cabin_deck"
+      cols: ["Cabin"]
+      prefix: "cabin"
+      max_features: 10
+    - _target_: src.features.categorical.nominal.CountFrequencyEncoderGenerator
+      name: "ticket_frequency"
+      cols: ["Ticket"]
+      normalize: true
+    - _target_: src.features.interaction.NumericalInteractionGenerator
+      name: "family_size"
+      cols: ["SibSp", "Parch"]
+      operations: ["add"]
+    - _target_: src.features.numerical.scaling.StandardScalerGenerator
+      name: "scale_numerical"
+      cols: ["Age", "Fare", "SibSp", "Parch"]
+
+features:
+  name: "v2_selected"
+  cols:
+    - Pclass
+    - Age
+    - SibSp
+    - Parch
+    - Fare
+    - Age_is_null
+    - Cabin_is_null
+    - Embarked_is_null
+    - Sex_te
+    - Embarked_te
+    - Pclass_te
+    - Age_mul_Pclass
+    - Fare_div_SibSp
+    - SibSp_div_Fare
+    - Fare_div_Parch
+    - Parch_div_Fare
+    - SibSp_div_Parch
+    - Parch_div_SibSp
+    - Age_q_binned
+    - Fare_q_binned
+    - Name_text_length
+    - Name_word_count
+    - cabin_Cabin_b96
+    - cabin_Cabin_b98
+    - cabin_Cabin_c22
+    - cabin_Cabin_c23
+    - cabin_Cabin_c25
+    - cabin_Cabin_c26
+    - cabin_Cabin_c27
+    - cabin_Cabin_f2
+    - cabin_Cabin_f33
+    - cabin_Cabin_g6
+    - Ticket_freq
+    - SibSp_add_Parch
+    - Age_scaled
+    - Fare_scaled
+    - SibSp_scaled
+    - Parch_scaled

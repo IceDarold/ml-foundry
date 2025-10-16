@@ -2,11 +2,69 @@
 # Uses v1_baseline feature engineering and v1_all features
 
 defaults:
-  - override /model: catboost
-  - override /feature_engineering: v1_baseline
-  - override /features: v1_all
   - _self_
 
 # W&B tags for experiment tracking
 wandb:
   tags: ["baseline", "catboost", "exp002"]
+
+model:
+  _target_: src.models.catboost.CatBoostModel
+  params:
+    iterations: 2000
+    learning_rate: 0.05
+    loss_function: 'Logloss'
+    eval_metric: 'AUC'
+    random_seed: ${globals.seed}
+    use_best_model: True
+    thread_count: -1
+    verbose: 100
+    depth: 6
+    l2_leaf_reg: 3.0
+    min_data_in_leaf: 1
+    bootstrap_type: 'Bayesian'
+    bagging_temperature: 1.0
+    random_strength: 1.0
+    one_hot_max_size: 2
+
+feature_engineering:
+  name: "v1_baseline"
+  pipeline:
+    - _target_: src.features.numerical.flags.IsNullIndicator
+      name: "missing_indicators"
+      cols: ["Age", "Cabin", "Embarked"]
+    - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+      name: "impute_categorical"
+      cols: ["Embarked"]
+    - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+      name: "ohe_sex"
+      cols: ["Sex"]
+    - _target_: src.features.numerical.scaling.StandardScalerGenerator
+      name: "scale_numerical"
+      cols: ["Age", "Fare", "SibSp", "Parch"]
+    - _target_: src.features.interaction.NumericalInteractionGenerator
+      name: "family_size"
+      cols: ["SibSp", "Parch"]
+      operations: ["add"]
+
+features:
+  name: "v1_all"
+  cols:
+    - "Pclass"
+    - "Age"
+    - "Fare"
+    - "SibSp"
+    - "Parch"
+    - "Age_is_null"
+    - "Cabin_is_null"
+    - "Embarked_is_null"
+    - "Embarked_C"
+    - "Embarked_Q"
+    - "Embarked_S"
+    - "Sex_female"
+    - "Sex_male"
+    - "Age_scaled"
+    - "Fare_scaled"
+    - "SibSp_scaled"
+    - "Parch_scaled"
+    - "SibSp_add_Parch"

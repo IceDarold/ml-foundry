@@ -42,7 +42,7 @@ pipeline:
   - _target_: src.features.text.statistics.TextStatisticsGenerator
     name: "name_stats"
     cols: ["Name"]
-    stats: ["length", "word_count"]
+    stats: ["text_length", "word_count"]
 
   # Step 6: Cabin deck extraction (text processing)
   - _target_: src.features.text.bow.CountVectorizerGenerator
@@ -50,7 +50,6 @@ pipeline:
     cols: ["Cabin"]
     prefix: "cabin"
     max_features: 10
-    ngram_range: [1, 1]
 
   # Step 7: Ticket frequency encoding
   - _target_: src.features.categorical.nominal.CountFrequencyEncoderGenerator

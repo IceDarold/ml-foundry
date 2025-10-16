@@ -2,10 +2,50 @@
 # Uses v1_baseline feature engineering and v1_all features
 
 defaults:
-  - ../feature_engineering: v1_baseline
-  - ../features: v1_all
   - _self_
 
 # W&B tags for experiment tracking
 wandb:
   tags: ["baseline", "lgbm", "exp001"]
+
+feature_engineering:
+  name: "v1_baseline"
+  pipeline:
+    - _target_: src.features.numerical.flags.IsNullIndicator
+      name: "missing_indicators"
+      cols: ["Age", "Cabin", "Embarked"]
+    - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+      name: "impute_categorical"
+      cols: ["Embarked"]
+    - _target_: src.features.categorical.nominal.OneHotEncoderGenerator
+      name: "ohe_sex"
+      cols: ["Sex"]
+    - _target_: src.features.numerical.scaling.StandardScalerGenerator
+      name: "scale_numerical"
+      cols: ["Age", "Fare", "SibSp", "Parch"]
+    - _target_: src.features.interaction.NumericalInteractionGenerator
+      name: "family_size"
+      cols: ["SibSp", "Parch"]
+      operations: ["add"]
+
+features:
+  name: "v1_all"
+  cols:
+    - "Pclass"
+    - "Age"
+    - "Fare"
+    - "SibSp"
+    - "Parch"
+    - "Age_is_null"
+    - "Cabin_is_null"
+    - "Embarked_is_null"
+    - "Embarked_C"
+    - "Embarked_Q"
+    - "Embarked_S"
+    - "Sex_female"
+    - "Sex_male"
+    - "Age_scaled"
+    - "Fare_scaled"
+    - "SibSp_scaled"
+    - "Parch_scaled"
+    - "SibSp_add_Parch"

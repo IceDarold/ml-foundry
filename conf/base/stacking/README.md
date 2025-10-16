@@ -68,11 +68,11 @@ meta_model:
 
 Перед запуском `stack.py` вы должны:
 1.  **Обучить базовые модели в режиме CV**, чтобы получить `oof_*.csv` файлы.
-    *   `make train E=exp_lgbm_tuned`
-    *   `make train E=exp_xgb_tuned`
+    *   `make train EXPERIMENT=exp_lgbm_tuned`
+    *   `make train EXPERIMENT=exp_xgb_tuned`
 2.  **Обучить те же модели в режиме `fulltrain`**, чтобы получить `sub_*_full.csv` файлы.
-    *   `make fulltrain E=exp_lgbm_tuned`
-    *   `make fulltrain E=exp_xgb_tuned`
+    *   `make fulltrain EXPERIMENT=exp_lgbm_tuned`
+    *   `make fulltrain EXPERIMENT=exp_xgb_tuned`
 3.  **Собрать все артефакты:** Скопировать и переименовать все нужные `.csv` файлы в папки `data/05_oof/` и `data/07_submissions/`.
 
 ### **Этап 2: Запуск Стекинга**
@@ -92,7 +92,7 @@ meta_model:
     ```
 2.  **Запустите:**
     ```bash
-    make stack S=lgbm_xgb_rf
+    make stacking STACKING=lgbm_xgb_rf
     ```
 **Результат:** Ваш, скорее всего, **самый сильный** сабмишен.
 
@@ -111,7 +111,7 @@ meta_model:
     ```
 2.  **Запустите:**
     ```bash
-    make stack S=lgbm_xgb_rf
+    make stacking STACKING=lgbm_xgb_rf
     ```
 **Результат:** Сабмишен, который является результатом "чистого" стекинга. Его скор на лидерборде должен быть очень близок к CV-скору, который вывел `stack.py`.
 
@@ -130,7 +130,7 @@ meta_model:
         alpha: 0.0 # Без регуляризации
         fit_intercept: false
     ```
-2.  **Запустите:** `make stack S=...`
+2.  **Запустите:** `make stacking STACKING=...`
 
 **Результат:** `stack.py` обучит `Ridge` на OOF'ах, чтобы найти оптимальные веса, а затем применит их к предсказаниям на тесте. Это автоматизирует поиск весов для блендинга.
 
