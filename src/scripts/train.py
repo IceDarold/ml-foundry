@@ -19,6 +19,7 @@ from src.metrics.base import MetricInterface
 from src.validation.base import BaseSplitter # Наш новый интерфейс для валидации
 from src.utils import get_logger, setup_logging, performance_monitor
 from src.utils import validate_type, validate_non_empty
+from hydra.core.hydra_config import HydraConfig
 
 LOGGER = get_logger(__name__)
 
@@ -49,6 +50,13 @@ def train(cfg: DictConfig) -> float:
     # Мы будем использовать ее для временного хранения артефактов.
     output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     
+    experiment_cfg = OmegaConf.select(cfg, "experiment")
+    if experiment_cfg:
+        OmegaConf.set_struct(cfg, False)
+        for key, value in experiment_cfg.items():
+            cfg[key] = value
+        OmegaConf.set_struct(cfg, True)
+
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     logger = LOGGER
 
@@ -105,7 +113,10 @@ def train(cfg: DictConfig) -> float:
 
     logger.info("Признаки успешно загружены.")
     
-    feature_cols = cfg.features.cols
+    feature_cols = OmegaConf.select(cfg, "features.cols")
+    if not feature_cols:
+        excluded = {cfg.globals.id_col, cfg.globals.target_col}
+        feature_cols = [col for col in train_df.columns if col not in excluded]
     target_col = cfg.globals.target_col
     
     X = train_df[feature_cols]
@@ -113,7 +124,15 @@ def train(cfg: DictConfig) -> float:
     X_test = test_df[feature_cols]
     
     logger.info(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
-    
+
+    overrides = []
+    try:
+        overrides = HydraConfig.get().overrides.task or []
+    except Exception:
+        overrides = []
+    experiment_override = next((ov for ov in overrides if ov.startswith("experiment=")), None)
+    experiment_name = experiment_override.split("=", 1)[1] if experiment_override else feature_artifact_name
+
     # ==========================================================================
     # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ
     # ==========================================================================
@@ -259,6 +278,18 @@ def train(cfg: DictConfig) -> float:
     submission_path = output_dir / "submission.csv"
     submission_df.to_csv(submission_path, index=False)
     
+    project_root = Path(hydra.utils.get_original_cwd())
+    submissions_root = project_root / "07_submissions"
+    submissions_root.mkdir(parents=True, exist_ok=True)
+    canonical_submission = submissions_root / f"submission_{experiment_name}.csv"
+    submission_df.to_csv(canonical_submission, index=False)
+
+    if not cfg.training.full_data:
+        oof_root = project_root / "05_oof"
+        oof_root.mkdir(parents=True, exist_ok=True)
+        canonical_oof = oof_root / f"oof_{experiment_name}.csv"
+        oof_df.to_csv(canonical_oof, index=False)
+
     if run is not None:
         output_artifact = wandb.Artifact(name=f"output-{run.id}", type="output")
         output_artifact.add_file(str(submission_path))

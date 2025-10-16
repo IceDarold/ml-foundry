@@ -57,9 +57,10 @@ class CountVectorizerGenerator(FeatureGenerator):
             # Создаем DataFrame из разреженной матрицы
             feature_names = [f"{self.prefix}_{col}_{name}" for name in vectorizer.get_feature_names_out()]
             sparse_df = pd.DataFrame.sparse.from_spmatrix(sparse_matrix, columns=feature_names, index=df.index)
+            dense_df = sparse_df.sparse.to_dense()
             
             # Присоединяем новые признаки
-            df = pd.concat([df, sparse_df], axis=1)
+            df = pd.concat([df, dense_df], axis=1)
 
         # Удаляем исходные текстовые колонки
         df.drop(columns=self.cols, inplace=True)
