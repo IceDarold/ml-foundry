@@ -47,7 +47,7 @@ class SklearnModel(ModelInterface):
     model_class: str
     params: Dict[str, Any]
     model_class_path: str = field(init=False)
-    model: BaseEstimator = field(init=False)
+    model: Any = field(init=False)
     @validate_type(str, dict)
     @validate_non_empty
 

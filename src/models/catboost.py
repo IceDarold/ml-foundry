@@ -34,7 +34,7 @@ class CatBoostModel(ModelInterface):
     """
     params: Dict[str, Any]
     is_regressor: bool = field(init=False, default=False)
-    model = field(init=False)
+    model: Any = field(init=False)
 
     def __post_init__(self):
         """

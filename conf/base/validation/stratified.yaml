@@ -1,0 +1,12 @@
+# conf/base/validation/stratified.yaml
+
+# Указывает Hydra использовать класс SklearnSplitterWrapper из файла src/validation/common.py
+_target_: src.validation.common.SklearnSplitterWrapper
+
+# Указываем, какой класс из sklearn использовать внутри обертки
+splitter_class: "sklearn.model_selection.StratifiedKFold"
+
+# Параметры для конструктора StratifiedKFold
+n_splits: 5
+shuffle: true
+random_state: ${globals.seed}

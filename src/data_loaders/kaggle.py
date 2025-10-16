@@ -3,10 +3,18 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 import pandas as pd
-from kaggle.api.kaggle_api_extended import KaggleApi
-from kaggle.rest import ApiException
 
 from .base import DataLoader
+
+# Import kaggle only when needed to avoid authentication errors at module level
+try:
+    from kaggle.api.kaggle_api_extended import KaggleApi
+    from kaggle.rest import ApiException
+    KAGGLE_AVAILABLE = True
+except (ImportError, OSError):
+    KAGGLE_AVAILABLE = False
+    KaggleApi = None
+    ApiException = None
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +24,19 @@ class KaggleDataLoader(DataLoader):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        self.api = None
+        if not KAGGLE_AVAILABLE:
+            logger.warning("Kaggle package not available, data loading will be skipped")
+            return
+
         try:
             self.api = KaggleApi()
             self.api.authenticate()
+            logger.info("Successfully authenticated with Kaggle API")
         except Exception as e:
-            logger.error(f"Failed to authenticate with Kaggle API: {e}")
-            logger.error("Please ensure you have a valid kaggle.json file in ~/.kaggle/ or set KAGGLE_USERNAME and KAGGLE_KEY environment variables")
-            raise RuntimeError("Kaggle API authentication failed") from e
+            logger.warning(f"Failed to authenticate with Kaggle API: {e}")
+            logger.warning("Kaggle data loading will be skipped. Ensure you have a valid kaggle.json file in ~/.kaggle/ or set KAGGLE_USERNAME and KAGGLE_KEY environment variables")
+            # Don't raise exception - allow fallback to other loaders
 
         self.dataset_name = config.get('dataset_name')
         self.competition_name = config.get('competition_name')
@@ -35,6 +49,8 @@ class KaggleDataLoader(DataLoader):
 
     def ensure_data_available(self) -> None:
         """Download data if not already cached."""
+        if self.api is None:
+            raise RuntimeError("Kaggle API not available - authentication failed during initialization")
         if self.dataset_name:
             self._download_dataset()
         elif self.competition_name:

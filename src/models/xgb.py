@@ -31,7 +31,7 @@ class XGBModel(ModelInterface):
         >>> predictions = model.predict(X_test)
     """
     params: Dict[str, Any]
-    model = field(init=False)
+    model: Any = field(init=False)
 
     def __post_init__(self):
         """

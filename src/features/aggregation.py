@@ -31,8 +31,8 @@ class AggregationGenerator(FeatureGenerator):
     group_keys: List[str] = field()
     group_values: List[str] = field()
     agg_funcs: List[str] = field()
-    fit_strategy: FitStrategy = "combined"
     agg_df_: pd.DataFrame = field(default=None, init=False)
+    fit_strategy: FitStrategy = "combined"
 
     def fit(self, data: pd.DataFrame) -> None:
         """Compute and store aggregated statistics.

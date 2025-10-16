@@ -1,0 +1,7 @@
+# conf/base/training/default.yaml
+
+# Параметры обучения по умолчанию
+full_data: false
+
+# Параметры fit для модели
+fit_params:

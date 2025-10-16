@@ -33,7 +33,7 @@ class MatrixFactorizationFeatureGenerator(FeatureGenerator):
     # Это не является утечкой, так как целевая переменная не используется.
     fit_strategy: FitStrategy = "combined"
     @validate_type(str, str, int)
-    @validate_non_empty
+    @validate_non_empty()
 
     def __init__(self, name: str, user_col: str, item_col: str, factors: int = 32, **model_kwargs: Any):
         """

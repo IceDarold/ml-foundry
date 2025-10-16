@@ -9,6 +9,7 @@
 #   S = Имя `stacking` конфига (из `conf/stacking/`)
 #   T = Имя `tuning` конфига (из `conf/tuning/`)
 #   SEL = Имя `selection` конфига (из `conf/selection/`)
+#   TOOL = Инструмент для установки зависимостей (poetry или pip, по умолч. auto)
 #
 # Вы можете переопределять их при запуске, например:
 # `make train E=exp002_catboost`
@@ -19,6 +20,7 @@ I ?= inf_exp001               # Базовый инференс для прим�
 S ?= titanic_stack             # Базовый стекинг для примера
 T ?= titanic_lgbm              # Базовый тюнинг для примера
 SEL ?= default                # Базовый конфиг отбора признаков
+TOOL ?= auto                  # Инструмент для установки (poetry или pip)
 
 .PHONY: help install features select train fulltrain tune stack predict pseudo clean
 
@@ -32,7 +34,7 @@ help:
 	@echo "=============================================================================="
 	@echo ""
 	@echo "  НАСТРОЙКА:"
-	@echo "    make install          - Установить все зависимости проекта через Poetry."
+	@echo "    make install [TOOL=poetry|pip] - Установить все зависимости проекта через Poetry или pip."
 	@echo ""
 	@echo "  ОСНОВНОЙ WORKFLOW:"
 	@echo "    make features E=<exp> - Сгенерировать признаки для эксперимента (по умолч.: $(E))."
@@ -53,6 +55,7 @@ help:
 	@echo "    make train E=exp002_catboost"
 	@echo "    make select E=exp002_catboost selection.top_n=300"
 	@echo "    make tune T=catboost_search E=exp002_catboost"
+	@echo "    make install TOOL=pip"
 	@echo "=============================================================================="
 
 
@@ -63,12 +66,25 @@ help:
 # --- Настройка ---
 install:
 	@echo ">>> Установка зависимостей..."
-	@if command -v poetry >/dev/null 2>&1; then \
-		echo ">>> Используется Poetry..."; \
-		poetry install; \
+	@if [ "$(TOOL)" = "pip" ]; then \
+		echo ">>> Используется pip..."; \
+		pip3 install -r requirements.txt; \
+	elif [ "$(TOOL)" = "poetry" ]; then \
+		if command -v poetry >/dev/null 2>&1; then \
+			echo ">>> Используется Poetry..."; \
+			poetry install; \
+		else \
+			echo ">>> Ошибка: Poetry не найден, но выбран TOOL=poetry."; \
+			exit 1; \
+		fi \
 	else \
-		echo ">>> Poetry не найден. Используется pip..."; \
-		pip install -r requirements.txt; \
+		if command -v poetry >/dev/null 2>&1; then \
+			echo ">>> Используется Poetry..."; \
+			poetry install; \
+		else \
+			echo ">>> Poetry не найден. Используется pip..."; \
+			pip3 install -r requirements.txt; \
+		fi \
 	fi
 	@echo ">>> ГОТОВО. Не забудьте выполнить 'wandb login', если делаете это впервые."
 

@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List, Dict, Any
 from dataclasses import dataclass, field
 
-from .base import FeatureGenerator
+from .base import FeatureGenerator, FitStrategy
 
 # ==================================================================================
 # DatetimeFeatureGenerator
@@ -36,6 +36,7 @@ class DatetimeFeatureGenerator(FeatureGenerator):
     name: str
     cols: List[str] = field()
     components: List[str] = field()
+    fit_strategy: FitStrategy = "train_only"
 
     def __post_init__(self):
         self.components = set(self.components)
