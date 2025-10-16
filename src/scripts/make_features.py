@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import time
+import os
 
 import hydra
 import pandas as pd
@@ -19,7 +20,7 @@ from src import utils
 from src.data_loaders.factory import create_data_loader
 
 
-@hydra.main(config_path="conf", config_name="config", version_base=None)
+@hydra.main(config_path="../../conf/projects/titanic", config_name="titanic", version_base=None)
 def make_features(cfg: DictConfig) -> None:
     """Main orchestrator script for the feature generation pipeline.
 
@@ -49,7 +50,7 @@ def make_features(cfg: DictConfig) -> None:
     print("---------------------------------------------")
     
     # --- 1. Загрузка исходных данных ---
-    data_loader = create_data_loader(cfg.data)
+    data_loader = create_data_loader(OmegaConf.to_container(cfg.data, resolve=True))
     data_loader.ensure_data_available()
     train_df = data_loader.load_train_data()
     test_df = data_loader.load_test_data()
@@ -100,29 +101,29 @@ def make_features(cfg: DictConfig) -> None:
     print(f"Test сохранен в:  {test_output_path}")
 
     # --- 4. Логирование артефактов в W&B ---
-    print("\n--- Сохранение артефактов в W&B ---")
-    
-    run = wandb.init(
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity,
-        name=f"make_features-{feature_set_name}-{utils.get_timestamp()}",
-        job_type="feature-engineering",
-        config=OmegaConf.to_container(cfg, resolve=True),
-    )
-    
-    artifact = wandb.Artifact(
-        name=feature_set_name,
-        type='dataset',
-        description=f"Набор признаков, сгенерированный по конфигу '{feature_set_name}'",
-        metadata={"feature_engineering_config": OmegaConf.to_container(cfg.feature_engineering)}
-    )
-    
-    # Добавляем сохраненные файлы в артефакт
-    artifact.add_file(str(train_output_path), name=f"train_{feature_set_name}.parquet")
-    artifact.add_file(str(test_output_path), name=f"test_{feature_set_name}.parquet")
-    
-    run.log_artifact(artifact)
-    run.finish()
+    if os.environ.get("WANDB_MODE", "").lower() in {"offline", "disabled"}:
+        print("W&B отключен, пропускаем логирование артефактов.")
+    else:
+        run = wandb.init(
+            project=cfg.wandb.project,
+            entity=cfg.wandb.entity,
+            name=f"make_features-{feature_set_name}-{utils.get_timestamp()}",
+            job_type="feature-engineering",
+            config=OmegaConf.to_container(cfg, resolve=True),
+        )
+
+        artifact = wandb.Artifact(
+            name=feature_set_name,
+            type='dataset',
+            description=f"Набор признаков, сгенерированный по конфигу '{feature_set_name}'",
+            metadata={"feature_engineering_config": OmegaConf.to_container(cfg.feature_engineering)}
+        )
+
+        artifact.add_file(str(train_output_path), name=f"train_{feature_set_name}.parquet")
+        artifact.add_file(str(test_output_path), name=f"test_{feature_set_name}.parquet")
+
+        run.log_artifact(artifact)
+        run.finish()
 
     end_time = time.time()
     print("---------------------------------------------")

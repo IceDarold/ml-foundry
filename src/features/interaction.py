@@ -3,16 +3,15 @@
 import logging
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from itertools import combinations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field  # noqa: F401 (some generators below use dataclass)
 
-from .base import FeatureGenerator
+from .base import FeatureGenerator, FitStrategy
 
 # ==================================================================================
 # NumericalInteractionGenerator
 # ==================================================================================
-@dataclass
 class NumericalInteractionGenerator(FeatureGenerator):
     """Creates interactions between pairs of numerical features.
 
@@ -30,12 +29,21 @@ class NumericalInteractionGenerator(FeatureGenerator):
         operations (List[str]): Mathematical operations to perform.
         epsilon (float): Small value added to denominators for safe division.
     """
-    name: str
-    cols: List[str] = field()
-    operations: List[str] = field(default_factory=lambda: ['add', 'subtract', 'multiply', 'divide'])
-    epsilon: float = 1e-6  # For safe division
+    def __init__(
+        self,
+        name: str,
+        cols: List[str],
+        operations: Optional[List[str]] = None,
+        epsilon: float = 1e-6,
+    ):
+        super().__init__(name)
+        self.cols = cols
+        self.operations = operations or ['add', 'subtract', 'multiply', 'divide']
+        self.epsilon = epsilon
+        self.fit_strategy = "train_only"
+        self._validate_columns()
 
-    def __post_init__(self):
+    def _validate_columns(self) -> None:
         if len(self.cols) < 2:
             raise ValueError("At least 2 columns are required to create interactions.")
 
@@ -69,7 +77,7 @@ class NumericalInteractionGenerator(FeatureGenerator):
         for col in self.cols:
             if col not in data.columns:
                 raise ValueError(f"Column '{col}' not found in data")
-        df = data
+        df = data.copy()
         logging.info(f"[{self.name}] Creating numerical interactions for columns: {self.cols}")
 
         # Generate all unique column pairs
@@ -94,7 +102,6 @@ class NumericalInteractionGenerator(FeatureGenerator):
 # ==================================================================================
 # CategoricalInteractionGenerator
 # ==================================================================================
-@dataclass
 class CategoricalInteractionGenerator(FeatureGenerator):
     """
     Создает взаимодействия между категориальными признаками путем их конкатенации.
@@ -108,8 +115,12 @@ class CategoricalInteractionGenerator(FeatureGenerator):
             созданы для каждой группы колонок во внутреннем списке.
             Пример: [['city', 'device'], ['product_brand', 'country']]
     """
-    name: str
-    cols_groups: List[List[str]] = field()
+    def __init__(self, name: str, cols_groups: List[List[str]]):
+        super().__init__(name)
+        if not cols_groups:
+            raise ValueError("cols_groups must contain at least one group definition.")
+        self.cols_groups = cols_groups
+        self.fit_strategy = "train_only"
 
     def fit(self, data: pd.DataFrame) -> None:
         """Это stateless преобразование, обучение не требуется."""
@@ -126,7 +137,7 @@ class CategoricalInteractionGenerator(FeatureGenerator):
             for col in group:
                 if col not in data.columns:
                     raise ValueError(f"Column '{col}' not found in data")
-        df = data
+        df = data.copy()
         logging.info(f"[{self.name}] Создание категориальных взаимодействий.")
 
         for group in self.cols_groups:
@@ -144,7 +155,6 @@ class CategoricalInteractionGenerator(FeatureGenerator):
 # ==================================================================================
 # NumCatInteractionGenerator
 # ==================================================================================
-@dataclass
 class NumCatInteractionGenerator(FeatureGenerator):
     """
     Создает взаимодействия между числовыми и категориальными признаками.
@@ -160,11 +170,20 @@ class NumCatInteractionGenerator(FeatureGenerator):
             категориальный признак (группа), а значение - список числовых
             признаков, для которых нужно посчитать отклонение.
     """
-    name: str
-    interactions: Dict[str, List[str]] = field()
-    group_means_: Dict[str, pd.Series] = field(default_factory=dict, init=False)
-    overall_means_: Dict[str, float] = field(default_factory=dict, init=False)
-    epsilon: float = 1e-6
+    def __init__(
+        self,
+        name: str,
+        interactions: Dict[str, List[str]],
+        epsilon: float = 1e-6,
+    ):
+        super().__init__(name)
+        if not interactions:
+            raise ValueError("interactions must contain at least one mapping.")
+        self.interactions = interactions
+        self.epsilon = epsilon
+        self.group_means_: Dict[str, pd.Series] = {}
+        self.overall_means_: Dict[str, float] = {}
+        self.fit_strategy = "train_only"
 
     def fit(self, data: pd.DataFrame) -> None:
         """

@@ -2,12 +2,25 @@
 
 from typing import Any, Dict
 from dataclasses import dataclass, field
+import warnings
 
 import joblib
-import lightgbm as lgb
 import pandas as pd
 
-from .base import ModelInterface # Импортируем наш базовый "контракт"
+try:
+    import lightgbm as lgb
+except (ImportError, OSError) as exc:  # pragma: no cover - depends on system libs
+    lgb = None  # type: ignore[assignment]
+    _LGB_IMPORT_ERROR = exc  # pragma: no cover - stored for diagnostics
+else:  # pragma: no cover - lightgbm is optional in tests
+    _LGB_IMPORT_ERROR = None
+
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+)
+
+from .base import ModelInterface  # Импортируем наш базовый "контракт"
 
 # ==================================================================================
 # LGBMModel
@@ -33,7 +46,8 @@ class LGBMModel(ModelInterface):
     """
     params: Dict[str, Any]
     is_regressor: bool = field(init=False, default=False)
-    model = field(init=False)
+    model: Any = field(init=False)
+    _using_fallback: bool = field(init=False, default=False)
 
     def __post_init__(self):
         """
@@ -48,10 +62,59 @@ class LGBMModel(ModelInterface):
 
         if 'regression' in objective or 'mae' in objective or 'mse' in objective:
             self.is_regressor = True
-            self.model = lgb.LGBMRegressor(**self.params)
         else:
             self.is_regressor = False
-            self.model = lgb.LGBMClassifier(**self.params)
+
+        if lgb is not None:
+            if self.is_regressor:
+                self.model = lgb.LGBMRegressor(**self.params)
+            else:
+                self.model = lgb.LGBMClassifier(**self.params)
+            return
+
+        self._using_fallback = True
+        warnings.warn(
+            "LightGBM backend is unavailable. Falling back to HistGradientBoosting. "
+            "Install libomp (e.g. `brew install libomp`) to enable native LightGBM.",
+            RuntimeWarning,
+        )
+        fallback_params = self._prepare_fallback_params()
+        if self.is_regressor:
+            self.model = HistGradientBoostingRegressor(**fallback_params)
+        else:
+            self.model = HistGradientBoostingClassifier(**fallback_params)
+
+    def _prepare_fallback_params(self) -> Dict[str, Any]:
+        """Map LightGBM parameters to HistGradientBoosting equivalents."""
+        params: Dict[str, Any] = {}
+        if 'learning_rate' in self.params:
+            params['learning_rate'] = self.params['learning_rate']
+
+        n_estimators = self.params.get('n_estimators')
+        if isinstance(n_estimators, int) and n_estimators > 0:
+            params['max_iter'] = n_estimators
+
+        max_depth = self.params.get('max_depth')
+        if isinstance(max_depth, int) and max_depth > 0:
+            params['max_depth'] = max_depth
+
+        num_leaves = self.params.get('num_leaves')
+        if isinstance(num_leaves, int) and num_leaves > 1:
+            params['max_leaf_nodes'] = num_leaves
+
+        min_child_samples = self.params.get('min_child_samples')
+        if isinstance(min_child_samples, int) and min_child_samples > 0:
+            params['min_samples_leaf'] = min_child_samples
+
+        reg_lambda = self.params.get('reg_lambda')
+        if isinstance(reg_lambda, (int, float)):
+            params['l2_regularization'] = max(reg_lambda, 0.0)
+
+        random_state = self.params.get('random_state')
+        if isinstance(random_state, int):
+            params['random_state'] = random_state
+
+        return params
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series, **kwargs: Any) -> None:
         """Train the LightGBM model.
@@ -69,7 +132,14 @@ class LGBMModel(ModelInterface):
             Use eval_set parameter to monitor validation performance during training.
             Early stopping can be enabled with early_stopping_rounds parameter.
         """
-        print("Обучение модели LightGBM...")
+        backend_name = "HistGradientBoosting" if self._using_fallback else "LightGBM"
+        print(f"Обучение модели {backend_name}...")
+        kwargs = dict(kwargs)
+        if self._using_fallback:
+            # HistGradientBoosting не поддерживает eval_set и ранний стоп — убираем их
+            kwargs.pop('eval_set', None)
+            kwargs.pop('early_stopping_rounds', None)
+            kwargs.pop('eval_metric', None)
         self.model.fit(X_train, y_train, **kwargs)
 
     def predict(self, X: pd.DataFrame) -> Any:

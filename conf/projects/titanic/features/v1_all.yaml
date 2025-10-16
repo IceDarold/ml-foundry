@@ -21,7 +21,6 @@ cols:
   - "Embarked_C"
   - "Embarked_Q"
   - "Embarked_S"
-  - "Embarked_nan"  # Missing value category from OHE
 
   - "Sex_female"
   - "Sex_male"

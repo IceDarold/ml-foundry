@@ -3,6 +3,7 @@
 import warnings
 from pathlib import Path
 import time
+import os
 from typing import List
 
 import hydra
@@ -19,10 +20,12 @@ from src.validation.base import BaseSplitter # Наш новый интерфе�
 from src.utils import get_logger, setup_logging, performance_monitor
 from src.utils import validate_type, validate_non_empty
 
+LOGGER = get_logger(__name__)
+
 warnings.filterwarnings("ignore")
 
 
-@hydra.main(config_path="conf", config_name="config", version_base=None)
+@hydra.main(config_path="../../conf/projects/titanic", config_name="titanic", version_base=None)
 @validate_type(DictConfig)
 @performance_monitor
 def train(cfg: DictConfig) -> float:
@@ -46,42 +49,53 @@ def train(cfg: DictConfig) -> float:
     # Мы будем использовать ее для временного хранения артефактов.
     output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     
-    run_name = f"{cfg.model._target_.split('.')[-1].replace('Model', '')}"
-    run_name += f"-{cfg.feature_engineering.name}"
-    run_name += "-FULL" if cfg.training.full_data else "-CV"
-    
-    run = wandb.init(
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity,
-        name=run_name,
-        config=OmegaConf.to_container(cfg, resolve=True),
-        tags=cfg.wandb.tags,
-        job_type="training",
-    )
-    
-    logger = get_logger(__name__)
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    logger = LOGGER
+
+    model_target = OmegaConf.select(cfg, "model._target_")
+    model_name = (model_target.split(".")[-1] if model_target else "Model").replace("Model", "")
+    feature_name = OmegaConf.select(cfg, "feature_engineering.name") or "unknown"
+    is_full = bool(OmegaConf.select(cfg, "training.full_data"))
+    run_name = f"{model_name}-{feature_name}{'-FULL' if is_full else '-CV'}"
+
+    wandb_mode = os.environ.get("WANDB_MODE", "").lower()
+    use_wandb = wandb_mode not in {"offline", "disabled"}
+    wandb_tags = OmegaConf.select(cfg, "wandb.tags") or []
+    run = None
+    if use_wandb:
+        run = wandb.init(
+            project=cfg.wandb.project,
+            entity=cfg.wandb.entity,
+            name=run_name,
+            config=cfg_dict,
+            tags=wandb_tags,
+            job_type="training",
+        )
+    else:
+        logger.info("W&B disabled via WANDB_MODE, skipping remote logging.")
     logger.info("--- Конфигурация эксперимента ---")
     logger.info(OmegaConf.to_yaml(cfg))
     logger.info("-----------------------------------")
     
     # === 2. Загрузка данных из артефакта W&B ===
-    logger.info("\n--- Загрузка набора признаков из артефакта W&B ---")
+    logger.info("\n--- Загрузка набора признаков ---")
 
-    feature_artifact_name = cfg.feature_engineering.name
-    # Формируем полное имя артефакта для скачивания
-    artifact_to_use = f"{cfg.wandb.entity}/{cfg.wandb.project}/{feature_artifact_name}:latest"
-    logger.info(f"Используется артефакт: {artifact_to_use}")
-    
-    # Эта команда скачивает артефакт и регистрирует его как входные данные для этого run'а
-    try:
-        artifact = run.use_artifact(artifact_to_use)
-    except wandb.errors.CommError as e:
-        logger.error(f"\nНе удалось найти артефакт '{artifact_to_use}'.")
-        logger.error("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
-        raise e
+    feature_artifact_name = feature_name
+    if use_wandb:
+        artifact_to_use = f"{cfg.wandb.entity}/{cfg.wandb.project}/{feature_artifact_name}:latest"
+        logger.info(f"Используется артефакт: {artifact_to_use}")
 
-    # Получаем путь к локальной папке, куда был скачан артефакт
-    artifact_dir = Path(artifact.download())
+        try:
+            artifact = run.use_artifact(artifact_to_use)
+        except wandb.errors.CommError as e:
+            logger.error(f"\nНе удалось найти артефакт '{artifact_to_use}'.")
+            logger.error("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
+            raise e
+
+        artifact_dir = Path(artifact.download())
+    else:
+        artifact_dir = Path(hydra.utils.get_original_cwd()) / "data" / cfg.data.features_path
+        logger.info(f"Используются локальные файлы признаков из: {artifact_dir}")
     
     train_features_path = artifact_dir / f"train_{feature_artifact_name}.parquet"
     test_features_path = artifact_dir / f"test_{feature_artifact_name}.parquet"
@@ -89,7 +103,7 @@ def train(cfg: DictConfig) -> float:
     train_df = pd.read_parquet(train_features_path)
     test_df = pd.read_parquet(test_features_path)
 
-    logger.info("Признаки успешно загружены из артефакта W&B.")
+    logger.info("Признаки успешно загружены.")
     
     feature_cols = cfg.features.cols
     target_col = cfg.globals.target_col
@@ -108,11 +122,12 @@ def train(cfg: DictConfig) -> float:
         logger.info("\n--- Режим: Обучение на 100% данных ---")
         
         model: ModelInterface = hydra.utils.instantiate(cfg.model)
-        
-        # Убираем параметры, специфичные для CV, если они есть
-        fit_params = cfg.training.fit_params.copy()
-        fit_params.pop('early_stopping_rounds', None)
-        
+        fit_params_cfg = OmegaConf.select(cfg, "training.fit_params")
+        fit_params = OmegaConf.to_container(fit_params_cfg, resolve=True) if fit_params_cfg else {}
+        if getattr(model, "_using_fallback", False):
+            fit_params.pop("early_stopping_rounds", None)
+            fit_params.pop("eval_metric", None)
+
         model.fit(X, y, **fit_params)
         test_preds = model.predict_proba(X_test)
         
@@ -144,11 +159,18 @@ def train(cfg: DictConfig) -> float:
         main_metric_name = main_metric.__class__.__name__.replace("Metric", "")
         
         additional_metrics: List[MetricInterface] = []
-        if 'additional' in cfg.metric and cfg.metric.additional:
-            for metric_cfg in cfg.metric.additional:
+        additional_cfg = OmegaConf.select(cfg, "metric.additional")
+        if additional_cfg:
+            if isinstance(additional_cfg, DictConfig) and "_target_" in additional_cfg:
+                iterable = [additional_cfg]
+            elif isinstance(additional_cfg, DictConfig):
+                iterable = list(additional_cfg.values())
+            else:
+                iterable = list(additional_cfg)
+
+            for metric_cfg in iterable:
                 metric_obj = hydra.utils.instantiate(metric_cfg)
-                # Сохраняем имя метрики для логирования, как оно задано в конфиге
-                metric_obj.name = metric_cfg.name 
+                metric_obj.name = getattr(metric_obj, "name", metric_obj.__class__.__name__.replace("Metric", ""))
                 additional_metrics.append(metric_obj)
 
         oof_preds = np.zeros(len(train_df))
@@ -166,12 +188,27 @@ def train(cfg: DictConfig) -> float:
             X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
             
             model: ModelInterface = hydra.utils.instantiate(cfg.model)
-            
-            model.fit(
-                X_train, y_train,
-                eval_set=[(X_valid, y_valid)],
-                **cfg.training.fit_params,
+            LOGGER.info(
+                "Model instance: %s, fallback flag: %s, backend type: %s",
+                model.__class__.__name__,
+                getattr(model, '_using_fallback', None),
+                getattr(getattr(model, 'model', None), '__class__', type(None)).__name__,
             )
+
+            fit_params_cfg = OmegaConf.select(cfg, "training.fit_params")
+            fit_params = OmegaConf.to_container(fit_params_cfg, resolve=True) if fit_params_cfg else {}
+            use_eval_set = True
+            if getattr(model, "_using_fallback", False):
+                fit_params.pop("early_stopping_rounds", None)
+                fit_params.pop("eval_metric", None)
+                use_eval_set = False
+                LOGGER.info(f"Fallback fit parameters (after cleanup): {fit_params}")
+
+            fit_kwargs = dict(fit_params)
+            if use_eval_set:
+                fit_kwargs["eval_set"] = [(X_valid, y_valid)]
+
+            model.fit(X_train, y_train, **fit_kwargs)
             
             valid_preds_proba = model.predict_proba(X_valid)
             oof_preds[valid_idx] = valid_preds_proba
@@ -191,7 +228,8 @@ def train(cfg: DictConfig) -> float:
             for metric_obj in additional_metrics:
                 add_score = metric_obj(y_valid.values, valid_preds_proba, **metric_kwargs)
                 log_dict[f"fold_score/{metric_obj.name}"] = add_score
-            run.log(log_dict)
+            if run is not None:
+                run.log(log_dict)
             
             # Сохранение модели
             model_path = output_dir / f"model_fold_{fold + 1}.pkl"
@@ -206,8 +244,9 @@ def train(cfg: DictConfig) -> float:
         logger.info(f"\n--- Итоговый результат CV ---")
         logger.info(f"Средний OOF-скор ({main_metric_name}): {oof_score_mean:.5f} (Std: {oof_score_std:.5f})")
         
-        run.summary[f"oof_score_mean"] = oof_score_mean
-        run.summary[f"oof_score_std"] = oof_score_std
+        if run is not None:
+            run.summary[f"oof_score_mean"] = oof_score_mean
+            run.summary[f"oof_score_std"] = oof_score_std
 
         # Сохранение OOF-предсказаний
         oof_df = pd.DataFrame({cfg.globals.id_col: train_df[cfg.globals.id_col], 'oof_preds': oof_preds})
@@ -220,18 +259,20 @@ def train(cfg: DictConfig) -> float:
     submission_path = output_dir / "submission.csv"
     submission_df.to_csv(submission_path, index=False)
     
-    output_artifact = wandb.Artifact(name=f"output-{run.id}", type="output")
-    output_artifact.add_file(str(submission_path))
-    if not cfg.training.full_data:
-        output_artifact.add_file(str(oof_path))
-    output_artifact.add_dir(str(output_dir), name="models")
-    run.log_artifact(output_artifact)
+    if run is not None:
+        output_artifact = wandb.Artifact(name=f"output-{run.id}", type="output")
+        output_artifact.add_file(str(submission_path))
+        if not cfg.training.full_data:
+            output_artifact.add_file(str(oof_path))
+        output_artifact.add_dir(str(output_dir), name="models")
+        run.log_artifact(output_artifact)
     
     end_time = time.time()
     logger.info(f"Все результаты сохранены в: {output_dir}")
     logger.info(f"Пайплайн завершен за {end_time - start_time:.2f} секунд.")
     
-    run.finish()
+    if run is not None:
+        run.finish()
     
     return oof_score_mean
 
@@ -240,9 +281,9 @@ if __name__ == "__main__":
     try:
         train()
     except Exception as e:
-        logger.error(f"\nКритическая ошибка во время выполнения: {e}")
+        LOGGER.error(f"\nКритическая ошибка во время выполнения: {e}")
         if wandb.run:
-            logger.error("Завершение W&B run с ошибкой...")
+            LOGGER.error("Завершение W&B run с ошибкой...")
             wandb.finish(exit_code=1)
         raise
 class TrainingContextManager:

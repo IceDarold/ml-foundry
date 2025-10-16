@@ -35,7 +35,7 @@ class StandardScalerGenerator(FeatureGenerator):
         self.cols = cols
         # Инстанциируем скейлер из scikit-learn с любыми дополнительными параметрами
         self.scaler = StandardScaler(**kwargs)
-        self.output_col_names = [f"{col}_standard_scaled" for col in self.cols]
+        self.output_col_names = [f"{col}_scaled" for col in self.cols]
 
     def fit(self, data: pd.DataFrame) -> None:
         """

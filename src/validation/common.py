@@ -13,6 +13,9 @@ ALLOWED_SPLITTERS = {
 @dataclass
 class SklearnSplitterWrapper(BaseSplitter):
     splitter_class: str
+    n_splits: int = 5
+    shuffle: bool = True
+    random_state: int = 42
     splitter: BaseCrossValidator = field(init=False)
 
     def __post_init__(self):
@@ -32,8 +35,15 @@ class SklearnSplitterWrapper(BaseSplitter):
             raise ValueError(f"Splitter class '{self.splitter_class}' is not in the allowed list for security reasons")
         splitter_constructor = ALLOWED_SPLITTERS[self.splitter_class]
 
-        # For now, create with default parameters since we don't have kwargs
-        self.splitter = splitter_constructor()
+        try:
+            self.splitter = splitter_constructor(
+                n_splits=self.n_splits,
+                shuffle=self.shuffle,
+                random_state=self.random_state,
+            )
+        except TypeError:
+            # Fallback for splitters that don't accept the full signature
+            self.splitter = splitter_constructor()
 
     def split(self, data, y, groups=None):
         return self.splitter.split(data, y, groups)

@@ -61,18 +61,32 @@ class OneHotEncoderGenerator(FeatureGenerator):
         df = data.copy()
         print(f"[{self.name}] Применение OneHotEncoder к {len(df)} строкам.")
         for col in self.cols:
-            # Создаем бинарные флаги для каждой сохраненной категории
             for cat in self.top_categories_[col]:
-                df[f"{col}_ohe_{cat}"] = (df[col] == cat).astype(int)
-            
-            # Если ограничивали количество, создаем флаг 'other'
+                if pd.isna(cat):
+                    col_suffix = "nan"
+                    mask = df[col].isna()
+                else:
+                    col_suffix = self._sanitize_category(str(cat))
+                    mask = df[col] == cat
+                df[f"{col}_{col_suffix}"] = mask.astype(int)
+
             if self.max_categories:
-                is_other = ~df[col].isin(self.top_categories_[col])
-                df[f"{col}_ohe_other"] = is_other.astype(int)
+                is_other = ~df[col].isin(self.top_categories_[col]) & df[col].notna()
+                df[f"{col}_other"] = is_other.astype(int)
         
         # Удаляем исходные колонки после кодирования
         df.drop(columns=self.cols, inplace=True)
         return df
+
+    @staticmethod
+    def _sanitize_category(value: str) -> str:
+        return (
+            value.strip()
+            .replace(" ", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(":", "_")
+        )
 
 # ==================================================================================
 # CountFrequencyEncoderGenerator
