@@ -87,20 +87,25 @@ class PretrainedEmbeddingGenerator(FeatureGenerator):
         print(f"[{self.name}] Применение PretrainedEmbeddingGenerator к {len(df)} строкам.")
 
         for col in self.cols:
-            # Применяем функцию ко всей колонке
-            results = df[col].apply(self._text_to_aggregated_vectors)
-            
+            # Используем генератор для обработки текстов по одному, избегая создания большого списка результатов
+            def _generate_embeddings():
+                for text in df[col]:
+                    yield self._text_to_aggregated_vectors(text)
+
+            # Создаем генератор результатов
+            results_gen = _generate_embeddings()
+
             # "Распаковываем" результаты в новые колонки
             for method in self.agg_methods:
-                # Извлекаем векторы для данного метода агрегации
-                vectors = results.apply(lambda x: x[method])
-                
+                # Извлекаем векторы для данного метода агрегации с помощью генератора
+                vectors = [result[method] for result in results_gen]
+
                 # Создаем имена для новых колонок
                 new_col_names = [f"{col}_{method}_dim_{i}" for i in range(self.embedding_dim)]
-                
+
                 # Создаем новый DataFrame из векторов
-                emb_df = pd.DataFrame(vectors.tolist(), columns=new_col_names, index=df.index)
-                
+                emb_df = pd.DataFrame(vectors, columns=new_col_names, index=df.index)
+
                 # Присоединяем к основному DataFrame
                 df = pd.concat([df, emb_df], axis=1)
 

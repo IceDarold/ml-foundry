@@ -16,11 +16,15 @@ from src import utils
 from src.models.base import ModelInterface
 from src.metrics.base import MetricInterface
 from src.validation.base import BaseSplitter # Наш новый интерфейс для валидации
+from src.utils import get_logger, setup_logging, performance_monitor
+from src.utils import validate_type, validate_non_empty
 
 warnings.filterwarnings("ignore")
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
+@validate_type(DictConfig)
+@performance_monitor
 def train(cfg: DictConfig) -> float:
     """
     Главный пайплайн для обучения модели.
@@ -32,7 +36,10 @@ def train(cfg: DictConfig) -> float:
     4. Сохраняет и логирует артефакты (модели, OOF-предсказания, сабмишен).
     """
     start_time = time.time()
-    
+
+    # === 0. Setup logging ===
+    setup_logging(cfg)
+
     # === 1. Инициализация W&B и подготовка ===
     utils.seed_everything(cfg.globals.seed)
     # Hydra создает уникальную директорию для каждого запуска.
@@ -52,24 +59,25 @@ def train(cfg: DictConfig) -> float:
         job_type="training",
     )
     
-    print("--- Конфигурация эксперимента ---")
-    print(OmegaConf.to_yaml(cfg))
-    print("-----------------------------------")
+    logger = get_logger(__name__)
+    logger.info("--- Конфигурация эксперимента ---")
+    logger.info(OmegaConf.to_yaml(cfg))
+    logger.info("-----------------------------------")
     
     # === 2. Загрузка данных из артефакта W&B ===
-    print("\n--- Загрузка набора признаков из артефакта W&B ---")
-    
+    logger.info("\n--- Загрузка набора признаков из артефакта W&B ---")
+
     feature_artifact_name = cfg.feature_engineering.name
     # Формируем полное имя артефакта для скачивания
     artifact_to_use = f"{cfg.wandb.entity}/{cfg.wandb.project}/{feature_artifact_name}:latest"
-    print(f"Используется артефакт: {artifact_to_use}")
+    logger.info(f"Используется артефакт: {artifact_to_use}")
     
     # Эта команда скачивает артефакт и регистрирует его как входные данные для этого run'а
     try:
         artifact = run.use_artifact(artifact_to_use)
     except wandb.errors.CommError as e:
-        print(f"\n[ОШИБКА] Не удалось найти артефакт '{artifact_to_use}'.")
-        print("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
+        logger.error(f"\nНе удалось найти артефакт '{artifact_to_use}'.")
+        logger.error("Убедитесь, что вы сначала запустили `make_features.py` с соответствующим конфигом.")
         raise e
 
     # Получаем путь к локальной папке, куда был скачан артефакт
@@ -80,8 +88,8 @@ def train(cfg: DictConfig) -> float:
     
     train_df = pd.read_parquet(train_features_path)
     test_df = pd.read_parquet(test_features_path)
-    
-    print("Признаки успешно загружены из артефакта W&B.")
+
+    logger.info("Признаки успешно загружены из артефакта W&B.")
     
     feature_cols = cfg.features.cols
     target_col = cfg.globals.target_col
@@ -90,14 +98,14 @@ def train(cfg: DictConfig) -> float:
     y = train_df[target_col]
     X_test = test_df[feature_cols]
     
-    print(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
+    logger.info(f"Используется {len(feature_cols)} признаков. train.shape={X.shape}, test.shape={X_test.shape}")
     
     # ==========================================================================
     # ❗️ ВЫБОР РЕЖИМА ОБУЧЕНИЯ
     # ==========================================================================
     if cfg.training.full_data:
         # --- РЕЖИМ 1: ОБУЧЕНИЕ НА ВСЕХ ДАННЫХ ---
-        print("\n--- Режим: Обучение на 100% данных ---")
+        logger.info("\n--- Режим: Обучение на 100% данных ---")
         
         model: ModelInterface = hydra.utils.instantiate(cfg.model)
         
@@ -110,17 +118,17 @@ def train(cfg: DictConfig) -> float:
         
         model_path = output_dir / "model_full_train.pkl"
         model.save(model_path)
-        print(f"Модель, обученная на всех данных, сохранена в: {model_path}")
+        logger.info(f"Модель, обученная на всех данных, сохранена в: {model_path}")
 
         oof_score_mean = -1.0
         
     else:
         # --- РЕЖИМ 2: ОБУЧЕНИЕ НА КРОСС-ВАЛИДАЦИИ ---
-        print("\n--- Режим: Обучение на кросс-валидации ---")
-        
+        logger.info("\n--- Режим: Обучение на кросс-валидации ---")
+
         # Инстанциируем сплиттер из нашего нового модуля валидации
         splitter: BaseSplitter = hydra.utils.instantiate(cfg.validation)
-        print(f"Стратегия валидации: {splitter.__class__.__name__} ({splitter.get_n_splits()} фолдов)")
+        logger.info(f"Стратегия валидации: {splitter.__class__.__name__} ({splitter.get_n_splits()} фолдов)")
         
         # Подготовка групп, если они требуются для сплиттера (например, GroupKFold)
         groups = None
@@ -129,7 +137,7 @@ def train(cfg: DictConfig) -> float:
             if group_col not in train_df.columns:
                 raise ValueError(f"Колонка для группировки '{group_col}' не найдена в данных.")
             groups = train_df[group_col]
-            print(f"Используется группировка по колонке: {group_col}")
+            logger.info(f"Используется группировка по колонке: {group_col}")
         
         # Инициализация метрик
         main_metric: MetricInterface = hydra.utils.instantiate(cfg.metric.main)
@@ -152,7 +160,7 @@ def train(cfg: DictConfig) -> float:
         
         for fold, (train_idx, valid_idx) in enumerate(split_iterator):
             fold_start_time = time.time()
-            print(f"\n--- Фолд {fold + 1}/{splitter.get_n_splits()} ---")
+            logger.info(f"\n--- Фолд {fold + 1}/{splitter.get_n_splits()} ---")
             
             X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
             X_valid, y_valid = X.iloc[valid_idx], y.iloc[valid_idx]
@@ -190,13 +198,13 @@ def train(cfg: DictConfig) -> float:
             model.save(model_path)
             
             fold_end_time = time.time()
-            print(f"Скор на фолде {fold + 1} ({main_metric_name}): {fold_score:.5f} (за {fold_end_time - fold_start_time:.2f} с)")
+            logger.info(f"Скор на фолде {fold + 1} ({main_metric_name}): {fold_score:.5f} (за {fold_end_time - fold_start_time:.2f} с)")
 
         oof_score_mean = np.mean(fold_scores)
         oof_score_std = np.std(fold_scores)
         
-        print(f"\n--- Итоговый результат CV ---")
-        print(f"Средний OOF-скор ({main_metric_name}): {oof_score_mean:.5f} (Std: {oof_score_std:.5f})")
+        logger.info(f"\n--- Итоговый результат CV ---")
+        logger.info(f"Средний OOF-скор ({main_metric_name}): {oof_score_mean:.5f} (Std: {oof_score_std:.5f})")
         
         run.summary[f"oof_score_mean"] = oof_score_mean
         run.summary[f"oof_score_std"] = oof_score_std
@@ -207,7 +215,7 @@ def train(cfg: DictConfig) -> float:
         oof_df.to_csv(oof_path, index=False)
 
     # === ФИНАЛЬНЫЙ ШАГ: СОХРАНЕНИЕ САБМИШЕНА И АРТЕФАКТОВ ===
-    print("\n--- Сохранение артефактов ---")
+    logger.info("\n--- Сохранение артефактов ---")
     submission_df = pd.DataFrame({cfg.globals.id_col: test_df[cfg.globals.id_col], target_col: test_preds})
     submission_path = output_dir / "submission.csv"
     submission_df.to_csv(submission_path, index=False)
@@ -220,8 +228,8 @@ def train(cfg: DictConfig) -> float:
     run.log_artifact(output_artifact)
     
     end_time = time.time()
-    print(f"Все результаты сохранены в: {output_dir}")
-    print(f"Пайплайн завершен за {end_time - start_time:.2f} секунд.")
+    logger.info(f"Все результаты сохранены в: {output_dir}")
+    logger.info(f"Пайплайн завершен за {end_time - start_time:.2f} секунд.")
     
     run.finish()
     
@@ -232,8 +240,31 @@ if __name__ == "__main__":
     try:
         train()
     except Exception as e:
-        print(f"\nКритическая ошибка во время выполнения: {e}")
+        logger.error(f"\nКритическая ошибка во время выполнения: {e}")
         if wandb.run:
-            print("Завершение W&B run с ошибкой...")
+            logger.error("Завершение W&B run с ошибкой...")
             wandb.finish(exit_code=1)
         raise
+class TrainingContextManager:
+    """Context manager for training scripts to handle resource cleanup."""
+
+    def __init__(self, run=None):
+        self.run = run
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup W&B run if it exists
+        if self.run and exc_type is not None:
+            # Finish the run with error status if an exception occurred
+            self.run.finish(exit_code=1)
+        elif self.run:
+            self.run.finish()

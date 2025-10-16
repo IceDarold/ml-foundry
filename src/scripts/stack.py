@@ -20,8 +20,20 @@ warnings.filterwarnings("ignore")
 
 
 def create_meta_dataset(configs: ListConfig, data_path: Path, id_col: str, pred_col_name: str) -> pd.DataFrame:
-    """
-    Универсальная функция для загрузки и объединения предсказаний базовых моделей.
+    """Universal function for loading and combining predictions from base models.
+
+    Args:
+        configs (ListConfig): List of model configurations containing paths to prediction files.
+        data_path (Path): Base path where prediction files are located.
+        id_col (str): Name of the ID column for merging.
+        pred_col_name (str): Name of the prediction column in the input files.
+
+    Returns:
+        pd.DataFrame: Combined dataframe with predictions from all models,
+            merged on the ID column.
+
+    Raises:
+        FileNotFoundError: If any prediction file is not found.
     """
     dfs = []
     print(f"\n--- Сборка мета-датасета (источник: '{pred_col_name}') ---")
@@ -50,11 +62,24 @@ def create_meta_dataset(configs: ListConfig, data_path: Path, id_col: str, pred_
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
 def stack(cfg: DictConfig) -> None:
-    """
-    Главный пайплайн для стекинга.
-    1. Собирает обучающий мета-датасет из OOF-предсказаний.
-    2. Собирает тестовый мета-датасет из предсказаний на тесте.
-    3. Обучает мета-модель и делает финальное предсказание.
+    """Main pipeline for model stacking.
+
+    This script implements a stacking ensemble approach:
+    1. Creates training meta-dataset from out-of-fold predictions of base models.
+    2. Creates test meta-dataset from test predictions of base models.
+    3. Trains a meta-model on the meta-dataset and generates final predictions.
+
+    Args:
+        cfg (DictConfig): Configuration containing stacking parameters,
+            including base model configurations, meta-model settings, and paths.
+
+    Raises:
+        FileNotFoundError: If prediction files are not found.
+        ValueError: If data validation fails.
+
+    Note:
+        The script evaluates stacking performance on cross-validation and logs
+        results to Weights & Biases. Final predictions are saved as submission files.
     """
     start_time = time.time()
     stack_cfg = cfg.stacking

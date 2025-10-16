@@ -2,42 +2,49 @@
 
 import pandas as pd
 from typing import List, Dict, Any
+from dataclasses import dataclass, field
 
 from .base import FeatureGenerator, FitStrategy
 
-# =a================================================================================
-# AggregationGenerator (Стандартные групповые статистики)
 # ==================================================================================
+# AggregationGenerator (Standard group statistics)
+# ==================================================================================
+@dataclass
 class AggregationGenerator(FeatureGenerator):
-    """
-    Создает агрегированные признаки с помощью операций `groupby().agg()`.
+    """Creates aggregated features using groupby().agg() operations.
 
-    Суммирует поведение сущностей по всей их истории. Поддерживает расширенный
-    список статистических функций.
+    Summarizes entity behavior across their entire history. Supports an extended
+    list of statistical functions for comprehensive feature engineering.
 
-    Параметры:
-        name (str): Уникальное имя для шага.
-        group_keys (List[str]): Список колонок для группировки.
-        group_values (List[str]): Список колонок для агрегации.
-        agg_funcs (List[str]): Список функций агрегации.
-            Поддерживаются: 'mean', 'std', 'sum', 'median', 'min', 'max', 'count',
-            'nunique', 'skew', 'kurt' (для kurtosis).
+    Args:
+        name (str): Unique name for this step.
+        group_keys (List[str]): List of columns to group by.
+        group_values (List[str]): List of columns to aggregate.
+        agg_funcs (List[str]): List of aggregation functions.
+            Supported: 'mean', 'std', 'sum', 'median', 'min', 'max', 'count',
+            'nunique', 'skew', 'kurt' (for kurtosis).
+
+    Attributes:
+        agg_df_ (pd.DataFrame): Fitted aggregation DataFrame (set during fit).
     """
+    name: str
+    group_keys: List[str] = field()
+    group_values: List[str] = field()
+    agg_funcs: List[str] = field()
     fit_strategy: FitStrategy = "combined"
-
-    def __init__(self, name: str, group_keys: List[str], group_values: List[str], agg_funcs: List[str]):
-        super().__init__(name)
-        self.group_keys = group_keys
-        self.group_values = group_values
-        self.agg_funcs = agg_funcs
-        self.agg_df_: pd.DataFrame = None
+    agg_df_: pd.DataFrame = field(default=None, init=False)
 
     def fit(self, data: pd.DataFrame) -> None:
+        """Compute and store aggregated statistics.
+
+        For feature stability, this method is often called on combined data
+        (train + test). The computed aggregations are stored for later use
+        in transform().
+
+        Args:
+            data (pd.DataFrame): Input data to compute aggregations from.
         """
-        Вычисляет и сохраняет агрегированные статистики. Для стабильности
-        признаков этот метод часто вызывается на объединенных данных (train + test).
-        """
-        print(f"[{self.name}] Обучение AggregationGenerator: группировка по {self.group_keys}")
+        print(f"[{self.name}] Fitting AggregationGenerator: grouping by {self.group_keys}")
         
         agg_df = data.groupby(self.group_keys)[self.group_values].agg(self.agg_funcs)
         
@@ -46,62 +53,72 @@ class AggregationGenerator(FeatureGenerator):
         agg_df.reset_index(inplace=True)
         
         self.agg_df_ = agg_df
-        print(f"  - Создано {len(self.agg_df_)} агрегированных записей с {self.agg_df_.shape[1]} признаками.")
+        print(f"  - Created {len(self.agg_df_)} aggregated records with {self.agg_df_.shape[1]} features.")
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Присоединяет вычисленные агрегации к исходному датафрейму."""
-        print(f"[{self.name}] Применение AggregationGenerator к {len(data)} строкам.")
+        """Join computed aggregations to the original dataframe.
+
+        Args:
+            data (pd.DataFrame): Input data to merge aggregations with.
+
+        Returns:
+            pd.DataFrame: Data with additional aggregated features.
+        """
+        print(f"[{self.name}] Applying AggregationGenerator to {len(data)} rows.")
         df = pd.merge(data, self.agg_df_, on=self.group_keys, how='left')
         return df
 
 # ==================================================================================
-# RollingAggregationGenerator (Статистики в скользящем временном окне)
+# RollingAggregationGenerator (Rolling window statistics)
 # ==================================================================================
+@dataclass
 class RollingAggregationGenerator(FeatureGenerator):
+    """Creates aggregated features in rolling time windows for each group.
+
+    Computes statistics (e.g., mean, sum) for specified features over a previous
+    time period (e.g., last 7 days) for each group.
+
+    IMPORTANT: Results are shifted by 1 step (lagged) to prevent data leakage
+    from the current event. The feature describes the state *before* the current moment.
+
+    Args:
+        name (str): Unique name for this step.
+        group_keys (List[str]): List of columns to group by (e.g., ['user_id']).
+        date_col (str): Date/time column to build the window on.
+        value_cols (List[str]): List of numeric columns to aggregate in the window.
+        window_sizes (List[str]): List of window sizes in pandas format
+            (e.g., '3D', '7D', '30D' - 3 days, 7 days, 30 days).
+        agg_funcs (List[str]): List of aggregation functions ('mean', 'sum', 'count').
     """
-    Создает агрегированные признаки в скользящем временном окне для каждой группы.
-
-    Вычисляет статистики (например, среднее, сумму) для заданных признаков
-    за предыдущий период времени (например, за последние 7 дней).
-
-    ВАЖНО: Результат сдвигается на 1 шаг (lagged), чтобы избежать утечки
-    данных из текущего события. Признак описывает состояние *до* текущего момента.
-
-    Параметры:
-        name (str): Уникальное имя для шага.
-        group_keys (List[str]): Список колонок для группировки (например, ['user_id']).
-        date_col (str): Колонка с датой/временем, по которой будет строиться окно.
-        value_cols (List[str]): Список числовых колонок для агрегации в окне.
-        window_sizes (List[str]): Список размеров окон в формате pandas
-            (например, '3D', '7D', '30D' - 3 дня, 7 дней, 30 дней).
-        agg_funcs (List[str]): Список функций агрегации ('mean', 'sum', 'count').
-    """
-
+    name: str
+    group_keys: List[str] = field()
+    date_col: str = field()
+    value_cols: List[str] = field()
+    window_sizes: List[str] = field()
+    agg_funcs: List[str] = field()
     fit_strategy: FitStrategy = "combined"
 
-    def __init__(self, name: str, group_keys: List[str], date_col: str, 
-                 value_cols: List[str], window_sizes: List[str], agg_funcs: List[str]):
-        super().__init__(name)
-        self.group_keys = group_keys
-        self.date_col = date_col
-        self.value_cols = value_cols
-        self.window_sizes = window_sizes
-        self.agg_funcs = agg_funcs
-
     def fit(self, data: pd.DataFrame) -> None:
-        """Это stateless преобразование, обучение не требуется."""
-        print(f"[{self.name}] RollingAggregationGenerator не требует обучения.")
+        """This is a stateless transformation, no training required."""
+        print(f"[{self.name}] RollingAggregationGenerator requires no training.")
         pass
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Вычисляет и присоединяет признаки в скользящем окне."""
-        df = data.copy()
-        print(f"[{self.name}] Применение RollingAggregationGenerator к {len(df)} строкам.")
+        """Compute and join rolling window features.
 
-        # Убедимся, что колонка с датой имеет правильный тип
+        Args:
+            data (pd.DataFrame): Input data to transform.
+
+        Returns:
+            pd.DataFrame: Data with additional rolling window features.
+        """
+        df = data.copy()
+        print(f"[{self.name}] Applying RollingAggregationGenerator to {len(df)} rows.")
+
+        # Ensure the date column has the correct type
         df[self.date_col] = pd.to_datetime(df[self.date_col])
-        
-        # Сортировка - обязательное условие для корректной работы rolling
+
+        # Sorting is mandatory for correct rolling operation
         df.sort_values(by=self.group_keys + [self.date_col], inplace=True)
         
         grouped = df.groupby(self.group_keys)
@@ -110,13 +127,13 @@ class RollingAggregationGenerator(FeatureGenerator):
             for window in self.window_sizes:
                 for func in self.agg_funcs:
                     new_col_name = f"{'_'.join(self.group_keys)}_{value_col}_rolling_{window}_{func}"
-                    print(f"  - Создание признака: {new_col_name}")
-                    
-                    # Вычисляем rolling агрегацию
+                    print(f"  - Creating feature: {new_col_name}")
+
+                    # Compute rolling aggregation
                     rolling_agg = grouped[value_col].rolling(window, on=self.date_col).agg(func)
-                    
-                    # Сдвигаем результат на 1, чтобы избежать утечки.
-                    # reset_index нужен, чтобы вернуть group_keys для правильного merge
+
+                    # Shift result by 1 to prevent leakage.
+                    # reset_index needed to return group_keys for proper merge
                     lagged_agg = rolling_agg.reset_index(0, drop=True).shift(1)
                     
                     df[new_col_name] = lagged_agg

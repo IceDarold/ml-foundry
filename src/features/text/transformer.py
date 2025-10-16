@@ -99,22 +99,35 @@ class TransformerEmbeddingGenerator(FeatureGenerator):
         print(f"[{self.name}] Применение TransformerEmbeddingGenerator к {len(df)} строкам.")
 
         for col in self.cols:
-            texts = df[col].fillna('').tolist()
+            # Используем генератор для текстов вместо создания полного списка
+            def _text_generator():
+                for text in df[col].fillna(''):
+                    yield text
+
+            text_gen = _text_generator()
             all_embeddings = []
-            
-            # Обрабатываем данные батчами с прогресс-баром
-            for i in tqdm(range(0, len(texts), self.batch_size), desc=f"Обработка '{col}'"):
-                batch_texts = texts[i:i + self.batch_size]
+
+            # Обрабатываем данные батчами с прогресс-баром, используя генератор
+            for i in tqdm(range(0, len(df), self.batch_size), desc=f"Обработка '{col}'"):
+                # Берем следующий батч из генератора
+                batch_texts = []
+                for _ in range(min(self.batch_size, len(df) - i)):
+                    try:
+                        batch_texts.append(next(text_gen))
+                    except StopIteration:
+                        break
+                if not batch_texts:
+                    break
                 batch_embeddings = self._get_embeddings_batch(batch_texts)
                 all_embeddings.append(batch_embeddings)
-            
+
             # Соединяем результаты всех батчей
             embeddings_matrix = np.vstack(all_embeddings)
             embedding_dim = embeddings_matrix.shape[1]
-            
+
             # Создаем имена для новых колонок
             new_col_names = [f"{col}_transformer_{self.pooling_strategy}_dim_{i}" for i in range(embedding_dim)]
-            
+
             # Создаем DataFrame и присоединяем
             emb_df = pd.DataFrame(embeddings_matrix, columns=new_col_names, index=df.index)
             df = pd.concat([df, emb_df], axis=1)

@@ -3,48 +3,62 @@
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Any
+from dataclasses import dataclass, field
 
 from .base import FeatureGenerator
 
 # ==================================================================================
 # DatetimeFeatureGenerator
 # ==================================================================================
+@dataclass
 class DatetimeFeatureGenerator(FeatureGenerator):
-    """
-    Извлекает различные компоненты из колонок с датой и временем.
+    """Extracts various components from date and time columns.
 
-    Преобразует колонки с датой/временем в набор числовых и циклических
-    признаков, которые могут быть использованы моделями.
+    Transforms date/time columns into a set of numeric and cyclical features
+    that can be used by machine learning models.
 
-    Параметры:
-        name (str): Уникальное имя для шага.
-        cols (List[str]): Список колонок для обработки.
-        components (List[str]): Список компонентов для извлечения.
-            Доступные компоненты:
+    Args:
+        name (str): Unique name for this step.
+        cols (List[str]): List of columns to process.
+        components (List[str]): List of components to extract.
+            Available components:
             - 'year', 'month', 'day', 'hour', 'minute', 'second'
-            - 'weekday' (день недели, 0=Пн), 'dayofyear', 'weekofyear'
+            - 'weekday' (day of week, 0=Mon), 'dayofyear', 'weekofyear'
             - 'quarter'
             - 'is_weekend', 'is_month_start', 'is_month_end'
             - 'time_of_day' ('Morning', 'Afternoon', 'Evening', 'Night')
-            - 'cyclical' (создает sin/cos преобразования для month, weekday, hour)
+            - 'cyclical' (creates sin/cos transformations for month, weekday, hour)
+
+    Attributes:
+        cols (List[str]): Columns to process.
+        components (set): Set of components to extract.
     """
-    def __init__(self, name: str, cols: List[str], components: List[str]):
-        super().__init__(name)
-        self.cols = cols
-        self.components = set(components)
+    name: str
+    cols: List[str] = field()
+    components: List[str] = field()
+
+    def __post_init__(self):
+        self.components = set(self.components)
 
     def fit(self, data: pd.DataFrame) -> None:
-        """Это stateless преобразование, обучение не требуется."""
-        print(f"[{self.name}] DatetimeFeatureGenerator не требует обучения.")
+        """This is a stateless transformation, no training required."""
+        print(f"[{self.name}] DatetimeFeatureGenerator requires no training.")
         pass
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Создает новые признаки на основе даты и времени."""
+        """Create new features based on date and time components.
+
+        Args:
+            data (pd.DataFrame): Input data containing datetime columns.
+
+        Returns:
+            pd.DataFrame: Data with additional datetime-derived features.
+        """
         df = data.copy()
-        print(f"[{self.name}] Извлечение компонентов даты/времени из: {self.cols}")
+        print(f"[{self.name}] Extracting datetime components from: {self.cols}")
 
         for col in self.cols:
-            # Преобразуем колонку в datetime, если она еще не в этом формате
+            # Convert column to datetime if not already in that format
             dt_series = pd.to_datetime(df[col], errors='coerce')
 
             if 'year' in self.components: df[f'{col}_year'] = dt_series.dt.year
@@ -69,7 +83,7 @@ class DatetimeFeatureGenerator(FeatureGenerator):
                 df[f'{col}_time_of_day'] = pd.cut(hour, bins=bins, labels=labels, right=False, ordered=False)
 
             if 'cyclical' in self.components:
-                # Синус/косинус преобразования для захвата цикличности
+                # Sine/cosine transformations to capture cyclical nature
                 if 'month' in self.components:
                     df[f'{col}_month_sin'] = np.sin(2 * np.pi * dt_series.dt.month / 12)
                     df[f'{col}_month_cos'] = np.cos(2 * np.pi * dt_series.dt.month / 12)
@@ -85,48 +99,62 @@ class DatetimeFeatureGenerator(FeatureGenerator):
 # ==================================================================================
 # DateDifferenceGenerator
 # ==================================================================================
+@dataclass
 class DateDifferenceGenerator(FeatureGenerator):
-    """
-    Вычисляет разницу между двумя колонками с датой/временем.
+    """Computes the difference between two date/time columns.
 
-    Параметры:
-        name (str): Уникальное имя для шага.
-        col1 (str): Первая (более поздняя) колонка с датой.
-        col2 (str): Вторая (более ранняя) колонка с датой.
-        unit (str): Единица измерения для разницы ('D' для дней, 'h' для часов и т.д.).
+    Args:
+        name (str): Unique name for this step.
+        col1 (str): First (later) date column.
+        col2 (str): Second (earlier) date column.
+        unit (str): Unit for the difference ('D' for days, 'h' for hours, etc.).
+
+    Attributes:
+        col1 (str): First date column name.
+        col2 (str): Second date column name.
+        unit (str): Time unit for difference calculation.
     """
-    def __init__(self, name: str, col1: str, col2: str, unit: str = 'D'):
-        super().__init__(name)
-        self.col1 = col1
-        self.col2 = col2
-        self.unit = unit
+    name: str
+    col1: str = field()
+    col2: str = field()
+    unit: str = 'D'
 
     def fit(self, data: pd.DataFrame) -> None:
-        """Это stateless преобразование, обучение не требуется."""
-        print(f"[{self.name}] DateDifferenceGenerator не требует обучения.")
+        """This is a stateless transformation, no training required."""
+        print(f"[{self.name}] DateDifferenceGenerator requires no training.")
         pass
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Создает новый признак с разницей во времени."""
+        """Create a new feature with the time difference.
+
+        Args:
+            data (pd.DataFrame): Input data containing the date columns.
+
+        Returns:
+            pd.DataFrame: Data with additional time difference feature.
+
+        Raises:
+            ValueError: If an unsupported time unit is specified.
+        """
         df = data.copy()
-        print(f"[{self.name}] Вычисление разницы между {self.col1} и {self.col2}")
+        print(f"[{self.name}] Computing difference between {self.col1} and {self.col2}")
         
         dt1 = pd.to_datetime(df[self.col1], errors='coerce')
         dt2 = pd.to_datetime(df[self.col2], errors='coerce')
         
         time_delta = (dt1 - dt2).dt.total_seconds()
         
-        # Конвертируем секунды в нужную единицу
+        # Convert seconds to the desired unit
         if self.unit == 'D':
-            divisor = 86400 # 24 * 60 * 60
+            divisor = 86400  # 24 * 60 * 60
         elif self.unit == 'h':
-            divisor = 3600 # 60 * 60
+            divisor = 3600  # 60 * 60
         elif self.unit == 'm':
             divisor = 60
         elif self.unit == 's':
             divisor = 1
         else:
-            raise ValueError(f"Неподдерживаемая единица измерения: {self.unit}")
+            raise ValueError(f"Unsupported unit: {self.unit}. Use 'D', 'h', 'm', or 's'.")
             
         df[f"{self.col1}_minus_{self.col2}_in_{self.unit}"] = time_delta / divisor
         return df

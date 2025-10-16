@@ -21,14 +21,25 @@ from src.data_loaders.factory import create_data_loader
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def make_features(cfg: DictConfig) -> None:
-    """
-    Главный скрипт-оркестратор для конвейера генерации признаков.
+    """Main orchestrator script for the feature generation pipeline.
 
-    1. Загружает данные.
-    2. Последовательно применяет генераторы признаков.
-    3. Сохраняет итоговые наборы признаков локально.
-    4. Логирует (загружает) сохраненные признаки как версионированный
-       артефакт в Weights & Biases.
+    This script handles the complete feature engineering workflow:
+    1. Loads raw data from configured data sources.
+    2. Sequentially applies feature generators from the pipeline configuration.
+    3. Saves the resulting feature sets locally as parquet files.
+    4. Logs and versions the generated features as artifacts in Weights & Biases.
+
+    Args:
+        cfg (DictConfig): Hydra configuration object containing all pipeline settings,
+            including data loading, feature engineering pipeline, and W&B parameters.
+
+    Raises:
+        FileNotFoundError: If required data files or directories are not found.
+        ValueError: If configuration parameters are invalid.
+
+    Note:
+        The script automatically imports all feature generators to ensure proper
+        registration of available feature generation classes.
     """
     start_time = time.time()
     

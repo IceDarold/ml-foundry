@@ -154,3 +154,60 @@ class TreeLeafFeatureGenerator(FeatureGenerator):
         leaf_df = pd.DataFrame(leaf_indices, columns=col_names, index=df.index)
         
         return pd.concat([df, leaf_df], axis=1)
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            KMeansFeatureGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup clustering model resources
+        if hasattr(self, 'model') and self.model is not None:
+            self.model = None
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            PCAGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup PCA model resources
+        if hasattr(self, 'model') and self.model is not None:
+            self.model = None
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            TreeLeafFeatureGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup tree model resources
+        if hasattr(self, 'model') and self.model is not None:
+            self.model = None

@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from scipy.stats import boxcox, yeojohnson
 
 from ..base import FeatureGenerator
+from src.utils import validate_type, validate_non_empty
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,6 +26,8 @@ class LogTransformer(FeatureGenerator):
     Параметры:
         name (str): Уникальное имя для шага.
         cols (List[str]): Список колонок для преобразования.
+    @validate_type(str, list)
+    @validate_non_empty
     """
     def __init__(self, name: str, cols: List[str]):
         super().__init__(name)
@@ -61,6 +64,8 @@ class SqrtTransformer(FeatureGenerator):
     значения сначала обрезаются по нулю.
 
     Параметры:
+    @validate_type(str, list)
+    @validate_non_empty
         name (str): Уникальное имя для шага.
         cols (List[str]): Список колонок для преобразования.
     """
@@ -98,6 +103,8 @@ class BoxCoxTransformer(FeatureGenerator):
     максимально похожим на нормальное.
 
     ВАЖНО: Требует, чтобы все значения в колонке были строго положительными (> 0).
+    @validate_type(str, list)
+    @validate_non_empty
 
     Параметры:
         name (str): Уникальное имя для шага.
@@ -144,6 +151,8 @@ class YeoJohnsonTransformer(FeatureGenerator):
     Применяет преобразование Йео-Джонсона.
 
     Это более общая версия преобразования Бокса-Кокса, которая работает
+    @validate_type(str, list)
+    @validate_non_empty
     как с положительными, так и с отрицательными значениями. Является
     отличной и более безопасной альтернативой.
 

@@ -14,6 +14,7 @@ except ImportError:
 
 # Импортируем наш базовый класс
 from ..base import FeatureGenerator, FitStrategy
+from src.utils import validate_type, validate_non_empty
 
 
 class MatrixFactorizationFeatureGenerator(FeatureGenerator):
@@ -31,6 +32,8 @@ class MatrixFactorizationFeatureGenerator(FeatureGenerator):
     # Обучаемся на всех данных для получения наиболее полных эмбеддингов.
     # Это не является утечкой, так как целевая переменная не используется.
     fit_strategy: FitStrategy = "combined"
+    @validate_type(str, str, int)
+    @validate_non_empty
 
     def __init__(self, name: str, user_col: str, item_col: str, factors: int = 32, **model_kwargs: Any):
         """
@@ -144,3 +147,31 @@ class MatrixFactorizationFeatureGenerator(FeatureGenerator):
 
         print(f"  - Добавлено {len(user_embed_cols) + len(item_embed_cols) + 2} новых признаков.")
         return df
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            MatrixFactorizationFeatureGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup matrix factorization resources
+        if hasattr(self, 'model_') and self.model_ is not None:
+            # Clear the model to free memory
+            self.model_ = None
+        if hasattr(self, 'user_factors_') and self.user_factors_ is not None:
+            self.user_factors_ = None
+        if hasattr(self, 'item_factors_') and self.item_factors_ is not None:
+            self.item_factors_ = None
+        if hasattr(self, 'user_map_'):
+            self.user_map_.clear()
+        if hasattr(self, 'item_map_'):
+            self.item_map_.clear()

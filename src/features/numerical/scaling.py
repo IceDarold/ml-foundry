@@ -6,6 +6,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 from ..base import FeatureGenerator
 from typing import TYPE_CHECKING
+from src.utils import validate_type, validate_non_empty
 
 if TYPE_CHECKING:
     from omegaconf import DictConfig
@@ -26,6 +27,8 @@ class StandardScalerGenerator(FeatureGenerator):
         name (str): Уникальное имя для шага.
         cols (List[str]): Список колонок для масштабирования.
         **kwargs: Дополнительные аргументы, передаваемые в sklearn.preprocessing.StandardScaler.
+    @validate_type(str, list)
+    @validate_non_empty
     """
     def __init__(self, name: str, cols: List[str], **kwargs: Any):
         super().__init__(name)
@@ -71,6 +74,8 @@ class MinMaxScalerGenerator(FeatureGenerator):
     Параметры:
         name (str): Уникальное имя для шага.
         cols (List[str]): Список колонок для масштабирования.
+    @validate_type(str, list)
+    @validate_non_empty
         **kwargs: Дополнительные аргументы, передаваемые в sklearn.preprocessing.MinMaxScaler
                   (например, feature_range=(0, 1)).
     """
@@ -113,6 +118,8 @@ class RobustScalerGenerator(FeatureGenerator):
     если в ваших данных присутствуют значительные выбросы.
 
     Параметры:
+    @validate_type(str, list)
+    @validate_non_empty
         name (str): Уникальное имя для шага.
         cols (List[str]): Список колонок для масштабирования.
         **kwargs: Дополнительные аргументы, передаваемые в sklearn.preprocessing.RobustScaler
@@ -144,3 +151,60 @@ class RobustScalerGenerator(FeatureGenerator):
         df[self.output_col_names] = scaled_data
         
         return df
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            StandardScalerGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup scaler resources
+        if hasattr(self, 'scaler') and self.scaler is not None:
+            self.scaler = None
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            MinMaxScalerGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup scaler resources
+        if hasattr(self, 'scaler') and self.scaler is not None:
+            self.scaler = None
+    def __enter__(self):
+        """Enter the context manager.
+
+        Returns:
+            RobustScalerGenerator: The generator instance.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup scaler resources
+        if hasattr(self, 'scaler') and self.scaler is not None:
+            self.scaler = None

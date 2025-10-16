@@ -29,8 +29,25 @@ def get_latest_hydra_run_path() -> Path:
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
 def pseudo_label(cfg: DictConfig) -> None:
-    """
-    Главный пайплайн для выполнения псевдо-лейблинга.
+    """Main pipeline for executing pseudo-labeling.
+
+    This script implements an iterative pseudo-labeling approach where:
+    1. Trains an initial model on labeled data.
+    2. Uses the model to predict labels for unlabeled data with high confidence.
+    3. Adds confident predictions to the training set.
+    4. Retrains the model with the expanded dataset.
+    5. Repeats the process for multiple rounds.
+
+    Args:
+        cfg (DictConfig): Configuration containing pseudo-labeling parameters,
+            including confidence thresholds, number of rounds, and model configs.
+
+    Raises:
+        FileNotFoundError: If required data files or model outputs are not found.
+
+    Note:
+        The process creates temporary datasets and features, logging progress
+        and results to Weights & Biases for tracking and reproducibility.
     """
     start_time = time.time()
     pl_cfg = cfg.pseudo_labeling

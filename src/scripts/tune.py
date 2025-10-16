@@ -19,14 +19,23 @@ warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning
 # Objective Function
 # ==================================================================================
 def objective(trial: optuna.trial.Trial, cfg: DictConfig) -> float:
-    """
-    "Целевая функция" для Optuna.
+    """Objective function for Optuna hyperparameter optimization.
 
-    На каждой итерации эта функция:
-    1. Получает от Optuna `trial` с предложенными гиперпараметрами.
-    2. Динамически перезаписывает этими параметрами копию основного конфига.
-    3. Запускает полный пайплайн `train.py` с новым конфигом.
-    4. Возвращает итоговый OOF-скор, который Optuna пытается максимизировать.
+    For each trial, this function:
+    1. Receives suggested hyperparameters from Optuna trial.
+    2. Dynamically overwrites the main config copy with these parameters.
+    3. Runs the complete train.py pipeline with the new config.
+    4. Returns the final OOF score for Optuna to optimize.
+
+    Args:
+        trial (optuna.trial.Trial): Optuna trial object with suggested parameters.
+        cfg (DictConfig): Base configuration to modify with trial parameters.
+
+    Returns:
+        float: Out-of-fold score to be optimized by Optuna.
+
+    Raises:
+        optuna.exceptions.TrialPruned: If training fails during the trial.
     """
     
     # Создаем копию конфига, чтобы не изменять оригинал между trials
@@ -67,8 +76,24 @@ def objective(trial: optuna.trial.Trial, cfg: DictConfig) -> float:
 # ==================================================================================
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
 def tune(cfg: DictConfig) -> None:
-    """
-    Главный скрипт для запуска подбора гиперпараметров.
+    """Main script for hyperparameter tuning using Optuna.
+
+    This script orchestrates hyperparameter optimization by:
+    1. Setting up Optuna study with W&B integration.
+    2. Running multiple trials with different parameter combinations.
+    3. Each trial executes the full training pipeline with suggested parameters.
+    4. Saving the best configuration as a reusable model config.
+
+    Args:
+        cfg (DictConfig): Configuration containing tuning parameters,
+            search space definitions, and Optuna settings.
+
+    Raises:
+        FileNotFoundError: If configuration files cannot be created.
+
+    Note:
+        Results are logged to Weights & Biases for tracking and analysis.
+        The best parameters are automatically saved as a new model configuration.
     """
     start_time = time.time()
     

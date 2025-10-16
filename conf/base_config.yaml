@@ -25,5 +25,11 @@ model: {}
 # Validation Settings - Placeholder for validation configuration
 validation: {}
 
+# Logging Settings - Centralized logging configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Optional: path to log file, e.g., "logs/app.log"
+
 # Output Settings - Common output directory
 output_dir: "outputs/experiments"

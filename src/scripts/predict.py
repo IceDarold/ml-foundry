@@ -16,11 +16,18 @@ from src.exceptions import ConfigurationError, DataLoadError, ModelLoadError, Va
 
 # Импортируем базовый класс, чтобы можно было загружать любую модель
 from src.models.base import ModelInterface
+from src.utils import performance_monitor
+from src.utils import validate_type, validate_non_empty
 
 
 def validate_config(cfg: DictConfig) -> None:
-    """
-    Validate configuration parameters.
+    """Validate configuration parameters for inference.
+
+    Args:
+        cfg (DictConfig): Configuration object to validate.
+
+    Raises:
+        ConfigurationError: If required parameters are missing or invalid.
     """
     if not cfg.inference.run_id:
         raise ConfigurationError("run_id must be provided.")
@@ -31,12 +38,28 @@ def validate_config(cfg: DictConfig) -> None:
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
+@validate_type(DictConfig)
+@performance_monitor
 def predict(cfg: DictConfig) -> None:
-    """
-    Скрипт для инференса (предсказаний).
+    """Script for model inference and prediction generation.
 
-    Загружает обученные модели из директории, соответствующей `run_id`,
-    применяет их к указанному набору признаков и сохраняет файл сабмишена.
+    Loads trained models from the directory corresponding to the specified run_id,
+    applies them to the configured feature set, and saves the submission file.
+
+    Args:
+        cfg (DictConfig): Hydra configuration containing inference settings,
+            including run_id, feature columns, and output paths.
+
+    Raises:
+        ConfigurationError: If configuration parameters are invalid.
+        FileNotFoundError: If model files or feature files are not found.
+        DataLoadError: If feature data cannot be loaded.
+        ModelLoadError: If models cannot be loaded.
+        ValueError: If data validation fails.
+
+    Note:
+        The script supports both cross-validation models (multiple folds) and
+        full-data trained models. Predictions are averaged across all available models.
     """
     start_time = time.time()
 
@@ -149,3 +172,25 @@ def predict(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     predict()
+class PredictionContextManager:
+    """Context manager for prediction scripts to handle resource cleanup."""
+
+    def __init__(self, models=None):
+        self.models = models if models is not None else []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and perform cleanup.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        # Cleanup loaded models to free memory
+        for model in self.models:
+            if hasattr(model, '__exit__'):
+                model.__exit__(exc_type, exc_val, exc_tb)
+        self.models.clear()

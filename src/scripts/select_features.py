@@ -16,14 +16,25 @@ from src import utils
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def select_features(cfg: DictConfig) -> None:
-    """
-    Скрипт для отбора признаков (Feature Selection).
+    """Script for feature selection using LightGBM feature importance.
 
-    1. Загружает набор признаков, указанный в `feature_engineering.name`.
-    2. Обучает модель LightGBM на кросс-валидации.
-    3. Агрегирует важность признаков (`feature_importance`) по всем фолдам.
-    4. Сохраняет список `top_n` лучших признаков в локальный файл и как
-       артефакт в Weights & Biases.
+    This script performs feature selection by:
+    1. Loading the specified feature set from W&B artifacts.
+    2. Training LightGBM models on cross-validation folds.
+    3. Aggregating feature importance scores across all folds.
+    4. Saving the top N most important features to local file and W&B artifact.
+
+    Args:
+        cfg (DictConfig): Configuration containing feature selection parameters,
+            including feature set name, top_n count, and model parameters.
+
+    Raises:
+        wandb.errors.CommError: If the specified feature artifact is not found.
+        FileNotFoundError: If local files cannot be created.
+
+    Note:
+        Feature importance is calculated as the mean importance across all CV folds.
+        The selected features are saved both locally and as a versioned W&B artifact.
     """
     start_time = time.time()
     
