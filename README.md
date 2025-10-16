@@ -92,10 +92,15 @@
 ### 3. Запуск
 
 **Шаг 8: Запустите базовый пайплайн**
-   Мы используем `Makefile` для удобного запуска. Эта команда сначала сгенерирует базовый набор признаков и сохранит его как артефакт в W&B, а затем обучит на нем модель LightGBM.
+   Мы используем `Makefile` для удобного запуска. Готовая цель `baseline` автоматически сгенерирует набор признаков `v1_baseline` и обучит эксперимент `exp001_baseline_lgbm`.
    ```bash
-   make train E=exp001_titanic_lgbm
+   make baseline
    ```
+   > Нужно больше контроля? Любую цель можно запустить с явными переменными:
+   > ```bash
+   > make train EXPERIMENT=exp003_tuned_lgbm
+   > make features EXPERIMENT=exp004_feature_engineering FEATURE_PIPELINE=v3_ensemble
+   > ```
 
 ### 4. Результаты
 
